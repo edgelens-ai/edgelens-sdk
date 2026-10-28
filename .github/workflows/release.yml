@@ -1,0 +1,410 @@
+# Publish a release: the five Python packages to PyPI, the two npm packages
+# to npm and the CI image to Docker Hub, all from the commit a `v<VERSION>`
+# tag points at. RELEASING.md describes the procedure and the one-time setup.
+#
+#   build ──┬── pypi-sdk ── pypi (cli, mcp, pytest, robot) ── npm
+#           └── image
+#
+# PyPI and npm use trusted publishing (OIDC): no registry token for either is
+# stored anywhere. Docker Hub uses an access token held by the `dockerhub`
+# environment.
+#
+# Each PyPI project uploads from its own job and its own environment,
+# `pypi-<project>`. PyPI matches a trusted publisher on owner, repository,
+# workflow file and environment, so five projects cannot share one.
+#
+# Run by hand (workflow_dispatch) to publish a tag that predates this
+# workflow: the run uses this file from the branch it is started on and
+# checks out the tag named in the `tag` input.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, for example v0.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+# One run per tag at a time; a second run waits instead of publishing
+# alongside the first.
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      commit: ${{ steps.tag.outputs.commit }}
+    env:
+      # The Makefile defaults to podman with SELinux-relabelled mounts; the
+      # runner has docker and no SELinux.
+      PODMAN: docker
+      VOL_RO: ":ro"
+      VOL_RW: ""
+    steps:
+      - name: Check the tag name
+        run: |
+          if ! [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$TAG' is not a release tag (vX.Y.Z)"
+            exit 1
+          fi
+
+      - uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Check the tag against VERSION
+        id: tag
+        run: |
+          version=$(cat VERSION)
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG does not match VERSION $version"
+            exit 1
+          fi
+          commit=$(git rev-parse HEAD)
+          tagged=$(git rev-parse "refs/tags/$TAG^{commit}")
+          if [ "$commit" != "$tagged" ]; then
+            echo "::error::checked out $commit, but $TAG is $tagged"
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: make version-check
+        run: make version-check
+
+      - name: make dist
+        run: make dist
+
+      - name: make dist-check
+        run: make dist-check
+
+      # Built here as a check only. The image job builds it again from the
+      # same commit rather than receiving it as an artifact: the image
+      # carries browsers and runs to gigabytes, every FROM line is pinned
+      # by digest and the k6 download by checksum, and publish-image needs
+      # the image in the local store of the job that pushes it.
+      - name: make image
+        run: make image
+
+      - uses: "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9" # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # edgelens-sdk first: every integration depends on it, and an index that
+  # does not have it yet cannot satisfy an install of the rest.
+  pypi-sdk:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: pypi-edgelens-sdk
+      url: https://pypi.org/project/edgelens-sdk/
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT: edgelens-sdk
+    steps:
+      - uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333" # v8.0.2
+        with:
+          name: dist
+          path: dist
+
+      - name: Verify dist
+        env:
+          COMMIT: ${{ needs.build.outputs.commit }}
+        run: |
+          built=$(sed -n 's/^commit=//p' dist/BUILD_INFO)
+          if [ "$built" != "$COMMIT" ]; then
+            echo "::error::dist was built from '$built', not $COMMIT"
+            exit 1
+          fi
+          listed=$(sed 's/^[0-9a-f]*  //' dist/SHA256SUMS | sort)
+          present=$(find dist -mindepth 1 -maxdepth 1 ! -name BUILD_INFO ! -name SHA256SUMS -printf '%f\n' | sort)
+          if [ "$listed" != "$present" ]; then
+            echo "::error::dist holds files the build did not record"
+            exit 1
+          fi
+          (cd dist && sha256sum --strict --quiet -c SHA256SUMS)
+
+      # Stage this project's wheel and sdist. A file PyPI already holds is
+      # dropped from the upload only when PyPI's sha256 equals the built
+      # file's, as on a re-run after a partial upload. A different file under
+      # the same name, or a file for this version that the build did not
+      # make, fails the job.
+      - name: Stage ${{ env.PROJECT }}
+        id: stage
+        run: |
+          version=${TAG#v}
+          stem=${PROJECT//-/_}
+          mkdir upload
+          mv "dist/$stem-$version-"*.whl "dist/$stem-$version.tar.gz" upload/
+          count=$(find upload -type f | wc -l)
+          if [ "$count" -ne 2 ]; then
+            echo "::error::expected a wheel and an sdist for $PROJECT, found $count files"
+            exit 1
+          fi
+          status=$(curl -sS -o pypi.json -w '%{http_code}' "https://pypi.org/pypi/$PROJECT/$version/json")
+          case $status in
+            200) ;;
+            404) echo '{"urls": []}' > pypi.json ;;
+            *)
+              echo "::error::PyPI lookup for $PROJECT $version returned HTTP $status"
+              exit 1
+              ;;
+          esac
+          for name in $(jq -r '.urls[].filename' pypi.json); do
+            if [ ! -f "upload/$name" ]; then
+              echo "::error::PyPI holds $name for $PROJECT $version, which this build did not make"
+              exit 1
+            fi
+            have=$(jq -r --arg n "$name" '.urls[] | select(.filename == $n) | .digests.sha256' pypi.json)
+            want=$(sha256sum "upload/$name" | cut -d ' ' -f 1)
+            if [ "$have" != "$want" ]; then
+              echo "::error::PyPI holds $name with sha256 $have, not $want"
+              exit 1
+            fi
+            echo "::notice::$name is already on PyPI from this build; skipping it"
+            rm "upload/$name"
+          done
+          if [ -n "$(find upload -type f)" ]; then
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          fi
+          ls -l upload
+
+      - name: Publish ${{ env.PROJECT }}
+        if: steps.stage.outputs.upload == 'true'
+        uses: "pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086" # v1.14.3
+        with:
+          packages-dir: upload/
+
+  pypi-integrations:
+    needs: [build, pypi-sdk]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [edgelens-cli, edgelens-mcp, edgelens-pytest, edgelens-robot]
+    environment:
+      name: pypi-${{ matrix.project }}
+      url: https://pypi.org/project/${{ matrix.project }}/
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT: ${{ matrix.project }}
+    steps:
+      - uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333" # v8.0.2
+        with:
+          name: dist
+          path: dist
+
+      - name: Verify dist
+        env:
+          COMMIT: ${{ needs.build.outputs.commit }}
+        run: |
+          built=$(sed -n 's/^commit=//p' dist/BUILD_INFO)
+          if [ "$built" != "$COMMIT" ]; then
+            echo "::error::dist was built from '$built', not $COMMIT"
+            exit 1
+          fi
+          listed=$(sed 's/^[0-9a-f]*  //' dist/SHA256SUMS | sort)
+          present=$(find dist -mindepth 1 -maxdepth 1 ! -name BUILD_INFO ! -name SHA256SUMS -printf '%f\n' | sort)
+          if [ "$listed" != "$present" ]; then
+            echo "::error::dist holds files the build did not record"
+            exit 1
+          fi
+          (cd dist && sha256sum --strict --quiet -c SHA256SUMS)
+
+      # The same staging as in pypi-sdk.
+      - name: Stage ${{ env.PROJECT }}
+        id: stage
+        run: |
+          version=${TAG#v}
+          stem=${PROJECT//-/_}
+          mkdir upload
+          mv "dist/$stem-$version-"*.whl "dist/$stem-$version.tar.gz" upload/
+          count=$(find upload -type f | wc -l)
+          if [ "$count" -ne 2 ]; then
+            echo "::error::expected a wheel and an sdist for $PROJECT, found $count files"
+            exit 1
+          fi
+          status=$(curl -sS -o pypi.json -w '%{http_code}' "https://pypi.org/pypi/$PROJECT/$version/json")
+          case $status in
+            200) ;;
+            404) echo '{"urls": []}' > pypi.json ;;
+            *)
+              echo "::error::PyPI lookup for $PROJECT $version returned HTTP $status"
+              exit 1
+              ;;
+          esac
+          for name in $(jq -r '.urls[].filename' pypi.json); do
+            if [ ! -f "upload/$name" ]; then
+              echo "::error::PyPI holds $name for $PROJECT $version, which this build did not make"
+              exit 1
+            fi
+            have=$(jq -r --arg n "$name" '.urls[] | select(.filename == $n) | .digests.sha256' pypi.json)
+            want=$(sha256sum "upload/$name" | cut -d ' ' -f 1)
+            if [ "$have" != "$want" ]; then
+              echo "::error::PyPI holds $name with sha256 $have, not $want"
+              exit 1
+            fi
+            echo "::notice::$name is already on PyPI from this build; skipping it"
+            rm "upload/$name"
+          done
+          if [ -n "$(find upload -type f)" ]; then
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          fi
+          ls -l upload
+
+      - name: Publish ${{ env.PROJECT }}
+        if: steps.stage.outputs.upload == 'true'
+        uses: "pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086" # v1.14.3
+        with:
+          packages-dir: upload/
+
+  npm:
+    # After every PyPI upload, so a failed one publishes nothing to npm.
+    needs: [build, pypi-sdk, pypi-integrations]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@edgelens/core
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333" # v8.0.2
+        with:
+          name: dist
+          path: dist
+
+      - name: Verify dist
+        env:
+          COMMIT: ${{ needs.build.outputs.commit }}
+        run: |
+          built=$(sed -n 's/^commit=//p' dist/BUILD_INFO)
+          if [ "$built" != "$COMMIT" ]; then
+            echo "::error::dist was built from '$built', not $COMMIT"
+            exit 1
+          fi
+          (cd dist && sha256sum --strict --quiet -c SHA256SUMS)
+
+      - uses: "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1" # v7.1.0
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Install npm
+        run: |
+          npm install -g npm@11.21.1
+          have=$(npm --version)
+          lowest=$(printf '%s\n' 11.5.1 "$have" | sort -V | head -n 1)
+          if [ "$lowest" != 11.5.1 ]; then
+            echo "::error::npm $have is older than 11.5.1"
+            exit 1
+          fi
+          echo "npm $have"
+
+      # Core first: the plugin's peer range names it. A version already on
+      # the registry is skipped only when it is this very tarball (the
+      # registry's integrity equals the tarball's sha512), as after a
+      # package's first, manual publish; any other copy fails the job.
+      - name: Publish @edgelens/core, then @edgelens/playwright-plugin
+        run: |
+          version=${TAG#v}
+          publish() {
+            name=$1
+            tgz=$2
+            want="sha512-$(openssl dgst -sha512 -binary "$tgz" | base64 -w 0)"
+            status=$(curl -sS -o registry.json -w '%{http_code}' "https://registry.npmjs.org/${name/\//%2f}")
+            case $status in
+              200) have=$(jq -r --arg v "$version" '.versions[$v].dist.integrity // empty' registry.json) ;;
+              404) have= ;;
+              *)
+                echo "::error::registry lookup for $name returned HTTP $status"
+                return 1
+                ;;
+            esac
+            if [ -n "$have" ]; then
+              if [ "$have" = "$want" ]; then
+                echo "::notice::$name@$version is already published from this tarball; skipping"
+                return 0
+              fi
+              echo "::error::$name@$version is already published with integrity $have, not $want"
+              return 1
+            fi
+            npm publish "$tgz" --access public --provenance
+          }
+          publish @edgelens/core "dist/edgelens-core-$version.tgz"
+          publish @edgelens/playwright-plugin "dist/edgelens-playwright-plugin-$version.tgz"
+
+  image:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment:
+      name: dockerhub
+      url: https://hub.docker.com/r/edgelensai/edgelens-sdk
+    env:
+      PODMAN: docker
+      VOL_RO: ":ro"
+      VOL_RW: ""
+    steps:
+      - uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Check the commit
+        env:
+          COMMIT: ${{ needs.build.outputs.commit }}
+        run: |
+          head=$(git rev-parse HEAD)
+          if [ "$head" != "$COMMIT" ]; then
+            echo "::error::checked out $head, but the build job built $COMMIT"
+            exit 1
+          fi
+
+      # Docker Hub's OIDC connection could replace this secret, but it is
+      # offered only on the Team and Business plans.
+      - uses: "docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6" # v4.7.0
+        with:
+          username: edgelensai
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: make image
+        run: make image
+
+      - name: make image-smoke
+        run: make image-smoke
+
+      # publish-image runs the version check, check-release-pins.sh and
+      # check-image.sh (built from HEAD, tags agree, and the version is not
+      # already in the registry) before the first push.
+      - name: make publish-image
+        run: make publish-image

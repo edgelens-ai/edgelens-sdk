@@ -4,7 +4,7 @@ The EdgeLens platform API is a REST/JSON service at
 `https://api.edgelens.ai`. All endpoints are versioned under `/v1`.
 
 The framework SDKs (`edgelens`, `@edgelens/core`, `xk6-edgelens`,
-`pytest-edgelens`, `robotframework-edgelens`) wrap this surface — most
+`edgelens-pytest`, `edgelens-robot`) wrap this surface — most
 tests should never touch raw HTTP. Reference it when:
 
 - Debugging an SDK call that's returning an unexpected status code.

@@ -1,16 +1,16 @@
-# robotframework-edgelens
+# edgelens-robot
 
 Robot Framework library for the EdgeLens Edge AI Device Farm. Keyword-
 driven wrapper around the Python SDK — write `Request Device`,
 `Deploy Model`, `Run Inference`, and let Robot drive the camera.
 
-Counterpart to [`pytest-edgelens`](../pytest) for pytest users and
+Counterpart to [`edgelens-pytest`](../pytest) for pytest users and
 [`@edgelens/playwright-plugin`](../playwright) for JS/TS.
 
 ## Install
 
 ```sh
-pip install robotframework-edgelens
+pip install edgelens-robot
 ```
 
 Requires Python 3.9+ and Robot Framework 6.0+.
@@ -106,7 +106,7 @@ in and you're set:
 ### GitHub Actions
 
 ```yaml
-- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.0
+- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.1
   with:
     api-key: ${{ secrets.EDGELENS_API_KEY }}
     command: robot --output output.xml tests/
@@ -133,4 +133,4 @@ pytest
 
 ## See also
 
-Pairs with pytest-edgelens and @edgelens/playwright-plugin.
+Pairs with edgelens-pytest and @edgelens/playwright-plugin.

@@ -16,7 +16,7 @@ scene on every run — no rig to build, nothing to hold up to a camera.
 `tests/test_demo_end_to_end.py::test_demo_face_detection` runs against a
 real reCamera running reCamaginedOS:
 
-1. The `device` fixture from `pytest-edgelens` creates a session and waits
+1. The `device` fixture from `edgelens-pytest` creates a session and waits
    until it is ready.
 2. `device.deploy` sends a capture utility, the face model and an
    inference binary to the camera.

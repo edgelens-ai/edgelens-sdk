@@ -1,6 +1,6 @@
 {
   "name": "@edgelens/playwright-plugin",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Playwright integration for EdgeLens — per-test camera sessions, auto-release, project presets.",
   "license": "MIT",
   "type": "module",
@@ -28,7 +28,7 @@
     "test:watch": "vitest"
   },
   "peerDependencies": {
-    "@edgelens/core": "^0.2.0",
+    "@edgelens/core": "^0.2.1",
     "@playwright/test": ">=1.50.0"
   },
   "devDependencies": {

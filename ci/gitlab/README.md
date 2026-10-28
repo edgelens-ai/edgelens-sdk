@@ -33,7 +33,7 @@ project settings. The template checks it's set and fails fast if not.
 | `.edgelens:base` | (override `script`) | The shared scaffolding — image, cache, artifacts, JUnit wiring, API key gate. Extend this when you need a custom command. |
 | `.edgelens:pytest` | `pytest --junit-xml=junit.xml` | Default Python suite. |
 | `.edgelens:playwright` | `npx playwright test --reporter=junit --output=test-results` | Playwright via `@edgelens/playwright-plugin`. JUnit report at `results.xml`. |
-| `.edgelens:robot` | `robot --output output.xml tests/` | Robot Framework (uses the `robotframework-edgelens` lib once it ships). |
+| `.edgelens:robot` | `robot --output output.xml tests/` | Robot Framework (uses the `edgelens-robot` lib once it ships). |
 
 ## Variables
 
@@ -50,7 +50,7 @@ Override on the job:
 edgelens-tests:
   extends: .edgelens:pytest
   variables:
-    EDGELENS_IMAGE: "edgelensai/edgelens-sdk:0.2.0"   # pin
+    EDGELENS_IMAGE: "edgelensai/edgelens-sdk:0.2.1"   # pin
     JUNIT_FILE: "my-report.xml"
 ```
 
@@ -111,7 +111,7 @@ runner's executor config — e.g. for Docker executor:
 
 ```toml
 [runners.docker]
-  image = "edgelensai/edgelens-sdk:0.2.0"
+  image = "edgelensai/edgelens-sdk:0.2.1"
   pull_policy = "if-not-present"
 ```
 

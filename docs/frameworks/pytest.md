@@ -1,10 +1,10 @@
 # pytest
 
-`pytest-edgelens` is auto-loaded by pytest via the `pytest11` entry
+`edgelens-pytest` is auto-loaded by pytest via the `pytest11` entry
 point. No `conftest.py` glue needed.
 
 ```bash
-pip install pytest-edgelens
+pip install edgelens-pytest
 export EDGELENS_API_KEY=el_live_xxx
 pytest
 ```

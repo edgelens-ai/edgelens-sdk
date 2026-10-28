@@ -1,12 +1,12 @@
 # Robot Framework
 
-`robotframework-edgelens` ships keywords that map directly to the
+`edgelens-robot` ships keywords that map directly to the
 SDK surface — useful when your QA team writes tests in Robot's
 keyword-driven style and you want them to hit real hardware without
 learning Python.
 
 ```bash
-pip install robotframework-edgelens
+pip install edgelens-robot
 export EDGELENS_API_KEY=el_live_xxx
 ```
 

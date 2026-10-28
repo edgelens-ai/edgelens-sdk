@@ -4,8 +4,8 @@ Test framework adapters built on top of `core/`. Each integration wraps the core
 
 | Subdir | Package | Framework | Status |
 |---|---|---|---|
-| `pytest/` | `pytest-edgelens` | pytest | Planned |
+| `pytest/` | `edgelens-pytest` | pytest | Planned |
 | `playwright/` | `@edgelens/playwright-plugin` | Playwright | Planned |
 | `k6/` | `xk6-edgelens` | k6 | Planned |
-| `robot/` | `robotframework-edgelens` | Robot Framework | Planned |
+| `robot/` | `edgelens-robot` | Robot Framework | Planned |
 | `cli/` | `edgelens` (CLI) | standalone | Planned |

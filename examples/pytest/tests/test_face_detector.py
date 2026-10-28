@@ -1,6 +1,6 @@
 """Face detector benchmark suite — the example project.
 
-Demonstrates the `device` fixture from pytest-edgelens against both
+Demonstrates the `device` fixture from edgelens-pytest against both
 OS tiers. Every test is one acceptance criterion (no bundled
 assertions) so a failure points straight at the broken bar.
 

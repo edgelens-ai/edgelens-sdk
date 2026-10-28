@@ -13,7 +13,7 @@ jobs:
     name: ${{ matrix.suite.name }}
     steps:
       - uses: actions/checkout@v4
-      - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.0
+      - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.1
         with:
           api-key: ${{ secrets.EDGELENS_API_KEY }}
           command: ${{ matrix.suite.command }}

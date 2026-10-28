@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "robotframework-edgelens"
+name = "edgelens-robot"
 dynamic = ["version"]
 description = "Robot Framework library for the EdgeLens Edge AI Device Farm."
 readme = "README.md"
@@ -11,6 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "EdgeLens", email = "support@edgelens.ai" }]
 requires-python = ">=3.9"
+keywords = ["robotframework", "edgelens", "testing"]
 classifiers = [
     "Framework :: Robot Framework",
     "Framework :: Robot Framework :: Library",
@@ -20,7 +21,7 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
-    "edgelens-sdk>=0.2.0,<0.3",
+    "edgelens-sdk>=0.2.1,<0.3",
     "robotframework>=6.0",
 ]
 

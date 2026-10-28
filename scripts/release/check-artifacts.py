@@ -30,8 +30,8 @@ PY_DISTS = {
     "edgelens_sdk": "core/python",
     "edgelens_cli": "integrations/cli",
     "edgelens_mcp": "integrations/mcp",
-    "pytest_edgelens": "integrations/pytest",
-    "robotframework_edgelens": "integrations/robot",
+    "edgelens_pytest": "integrations/pytest",
+    "edgelens_robot": "integrations/robot",
 }
 NPM_DISTS = {
     "edgelens-core": "core/typescript",

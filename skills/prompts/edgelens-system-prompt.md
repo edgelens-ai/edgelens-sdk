@@ -84,7 +84,7 @@ Use the string `"stock-os"` everywhere the API surface takes a string.
 1. Ask which framework if it isn't obvious (pytest, Playwright, k6, Robot).
 2. Ask which OS tier if the test description doesn't pin it.
 3. Write the *thinnest* possible test that covers the acceptance criterion. Resist the urge to deploy + display + inference all in one test unless that combination is what's being checked.
-4. If the user is on pytest, prefer the `device` fixture from `pytest-edgelens` over hand-rolling `EdgeLensClient`.
+4. If the user is on pytest, prefer the `device` fixture from `edgelens-pytest` over hand-rolling `EdgeLensClient`.
 
 ## When the user asks for help with a failure
 

@@ -81,7 +81,7 @@ that yet; size the fanout to the key's cap.
 hardware_tests:
   image: python:3.12-slim
   script:
-    - pip install pytest-edgelens
+    - pip install edgelens-pytest
     - pytest tests/hardware/ --edgelens-os=stock-os
 ```
 

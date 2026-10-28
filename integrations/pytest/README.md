@@ -1,4 +1,4 @@
-# pytest-edgelens
+# edgelens-pytest
 
 pytest plugin for the EdgeLens Edge AI Device Farm — write a test that
 gets a real edge AI camera as a fixture, with auto-allocate, auto-
@@ -10,7 +10,7 @@ the Python world.
 ## Install
 
 ```sh
-pip install pytest-edgelens
+pip install edgelens-pytest
 ```
 
 Requires Python 3.9+. Auto-loaded by pytest via the `pytest11` entry
@@ -118,7 +118,7 @@ strategy:
     os: [stock, recamagined]
 steps:
   - uses: actions/checkout@v4
-  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.0
+  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.1
     with:
       api-key: ${{ secrets.EDGELENS_API_KEY }}
       command: pytest --edgelens-os=${{ matrix.os }} --junit-xml=junit.xml

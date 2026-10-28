@@ -28,13 +28,13 @@ you already use:
 
 ```bash
 # pytest
-pip install pytest-edgelens
+pip install edgelens-pytest
 
 # Playwright (Node)
 npm install --save-dev @edgelens/playwright-plugin
 
 # Robot Framework
-pip install robotframework-edgelens
+pip install edgelens-robot
 
 # k6 (Go-based, builds a custom k6 binary)
 xk6 build --with github.com/edgelens-ai/edgelens-sdk/integrations/k6
@@ -56,7 +56,7 @@ def test_face_detection_meets_latency_target(device):
     assert stats.latency_ms.p95 < 100
 ```
 
-The `device` fixture comes from `pytest-edgelens`. It allocates a real
+The `device` fixture comes from `edgelens-pytest`. It allocates a real
 device, flashes it, waits for `status=ready`, and releases on test exit
 — you write the assertion, EdgeLens handles the rest.
 

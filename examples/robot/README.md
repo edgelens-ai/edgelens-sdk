@@ -1,6 +1,6 @@
 # Robot Framework example — keyword-driven QA
 
-Robot Framework suite using `robotframework-edgelens` for a QA-team-style
+Robot Framework suite using `edgelens-robot` for a QA-team-style
 keyword-driven test pass.
 
 ## Setup
@@ -52,7 +52,7 @@ examples/robot/
 
 ```yaml
 - run: |
-    pip install robotframework-edgelens
+    pip install edgelens-robot
     robot --include regression tests/
   env:
     EDGELENS_API_KEY: ${{ secrets.EDGELENS_API_KEY }}

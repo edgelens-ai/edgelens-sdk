@@ -84,9 +84,22 @@
 #                        version-check passes, the image was built from
 #                        HEAD, and <version> is not already in the registry.
 #                        RELEASING.md has the whole procedure.
+#   make workflow-lint   actionlint (with shellcheck) over
+#                        .github/workflows/, in a digest-pinned container
+#                        with no network.
 #   make help            This list.
 
 PODMAN ?= podman
+
+# Bind-mount suffixes. The `z` relabels the mount for SELinux under podman.
+# Docker accepts it too, but where it is unwanted (docker on a host without
+# SELinux, as in the release workflow) override both:
+#   make dist PODMAN=docker VOL_RO=:ro VOL_RW=
+VOL_RO ?= :ro,z
+VOL_RW ?= :z
+
+# The workflow linter, pinned by the digest of its multi-arch index.
+ACTIONLINT_IMAGE ?= docker.io/rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
 
 PY_IMAGE ?= edgelens-sdk-test:0.1
 TS_IMAGE ?= edgelens-sdk-test-typescript:0.1
@@ -143,15 +156,15 @@ WHEEL_IMPORTS = \
   edgelens_sdk-*.whl:edgelens \
   edgelens_cli-*.whl:edgelens_cli \
   edgelens_mcp-*.whl:edgelens_mcp \
-  pytest_edgelens-*.whl:pytest_edgelens \
-  robotframework_edgelens-*.whl:EdgeLensLibrary
+  edgelens_pytest-*.whl:pytest_edgelens \
+  edgelens_robot-*.whl:EdgeLensLibrary
 
 .PHONY: help test test-python test-typescript test-go test-image test-rebuild \
         test-image-python test-image-typescript \
         test-rebuild-python test-rebuild-typescript \
         version-check version-check-head set-version \
         dist dist-check dist-image publish-pypi publish-npm \
-        image image-smoke publish-image
+        image image-smoke publish-image workflow-lint
 
 help:
 	@sed -n 's/^#   //p' $(MAKEFILE_LIST) | sed -n '/^make /,/^$$/p'
@@ -199,7 +212,7 @@ test-python: test-image-python
 	for p in $(TEST_PYTHON_COMPONENTS); do \
 	  echo "=== $$p ==="; \
 	  $(PODMAN) run --rm --network none \
-	    -v $(REPO):/sdk:ro,z -w /sdk \
+	    -v $(REPO):/sdk$(VOL_RO) -w /sdk \
 	    $(PY_IMAGE) \
 	    python3 -m pytest -p no:cacheprovider "$$p" $(ARGS) \
 	    || fail=1; \
@@ -227,24 +240,25 @@ test-typescript: test-image-typescript
 ## exactly as committed; the source mount is read-only besides.
 test-go:
 	$(PODMAN) run --rm \
-	  -v $(REPO)/integrations/k6:/src:ro,z -w /src \
+	  -v $(REPO)/integrations/k6:/src$(VOL_RO) -w /src \
 	  -v $(GO_MODCACHE):/go/pkg/mod \
 	  -e GOFLAGS=-mod=readonly -e GOTOOLCHAIN=local -e GOCACHE=/tmp/go-build \
 	  $(GO_IMAGE) \
 	  go test ./... $(ARGS)
 
-## Build both images on absence. `podman image exists` is the check rather
-## than a timestamp, because no host file's mtime tracks an image layer -- a
-## change under core/python/edgelens/ needs no rebuild either (the mount
-## picks it up).
+## Build both images on absence. `image inspect` is the check rather than a
+## timestamp, because no host file's mtime tracks an image layer -- a change
+## under core/python/edgelens/ needs no rebuild either (the mount picks it
+## up). It is `image inspect` and not `image exists` because docker has only
+## the former.
 test-image: test-image-python test-image-typescript
 
 test-image-python:
-	@$(PODMAN) image exists $(PY_IMAGE) \
+	@$(PODMAN) image inspect $(PY_IMAGE) >/dev/null 2>&1 \
 	  || $(PODMAN) build -f Dockerfile.test -t $(PY_IMAGE) .
 
 test-image-typescript:
-	@$(PODMAN) image exists $(TS_IMAGE) \
+	@$(PODMAN) image inspect $(TS_IMAGE) >/dev/null 2>&1 \
 	  || $(PODMAN) build -f Dockerfile.test-typescript -t $(TS_IMAGE) .
 
 ## Force-rebuild. The only approved route to pick up a Dockerfile.test,
@@ -265,7 +279,7 @@ test-rebuild-typescript:
 ## ---------------------------------------------------------------------------
 
 dist-image:
-	@$(PODMAN) image exists $(DIST_IMAGE) \
+	@$(PODMAN) image inspect $(DIST_IMAGE) >/dev/null 2>&1 \
 	  || $(PODMAN) build -f Dockerfile.dist -t $(DIST_IMAGE) .
 
 ## version-check reads the working tree, restricted to tracked files so an
@@ -274,12 +288,12 @@ dist-image:
 ## is what has to agree.
 version-check: dist-image
 	@git ls-files | $(PODMAN) run --rm -i --network none \
-	  -v $(REPO):/sdk:ro,z $(DIST_IMAGE) \
+	  -v $(REPO):/sdk$(VOL_RO) $(DIST_IMAGE) \
 	  python3 /sdk/scripts/release/version.py check /sdk --files-from -
 
 version-check-head: dist-image
 	@git archive HEAD | $(PODMAN) run --rm -i --network none \
-	  -v $(RELEASE):/release:ro,z $(DIST_IMAGE) \
+	  -v $(RELEASE):/release$(VOL_RO) $(DIST_IMAGE) \
 	  sh -c 'mkdir /tmp/src && tar -x -C /tmp/src && python3 /release/version.py check /tmp/src'
 
 ## The lock files are npm's to write: each is regenerated from its manifest,
@@ -288,12 +302,12 @@ version-check-head: dist-image
 set-version: dist-image
 	@test -n "$(V)" || { echo "usage: make set-version V=x.y.z" >&2; exit 1; }
 	@git ls-files | $(PODMAN) run --rm -i --network none \
-	  -v $(REPO):/sdk:z $(DIST_IMAGE) \
+	  -v $(REPO):/sdk$(VOL_RW) $(DIST_IMAGE) \
 	  python3 /sdk/scripts/release/version.py set /sdk $(V) --files-from -
 	@for d in core/typescript integrations/playwright; do \
 	  echo "lock $$d/package-lock.json"; \
 	  $(PODMAN) run --rm -e HOME=/tmp -e npm_config_update_notifier=false \
-	    -v $(REPO):/sdk:z -w /sdk/$$d $(NODE_IMAGE) \
+	    -v $(REPO):/sdk$(VOL_RW) -w /sdk/$$d $(NODE_IMAGE) \
 	    npm install --package-lock-only --ignore-scripts --no-audit --no-fund --loglevel=error \
 	    || exit 1; \
 	done
@@ -306,13 +320,13 @@ set-version: dist-image
 dist: version-check-head
 	@git diff --quiet HEAD -- || echo "note: uncommitted changes are not in dist/ (it builds HEAD)"
 	@mkdir -p $(DIST)
-	@$(PODMAN) run --rm -v $(DIST):/dist:z $(DIST_IMAGE) \
+	@$(PODMAN) run --rm -v $(DIST):/dist$(VOL_RW) $(DIST_IMAGE) \
 	  find /dist -mindepth 1 -delete
 	git archive HEAD | $(PODMAN) run --rm -i \
-	  -v $(DIST):/dist:z -v $(RELEASE):/release:ro,z \
+	  -v $(DIST):/dist$(VOL_RW) -v $(RELEASE):/release$(VOL_RO) \
 	  $(DIST_IMAGE) sh /release/build-python.sh
 	git archive HEAD | $(PODMAN) run --rm -i -e HOME=/tmp \
-	  -v $(DIST):/dist:z -v $(RELEASE):/release:ro,z \
+	  -v $(DIST):/dist$(VOL_RW) -v $(RELEASE):/release$(VOL_RO) \
 	  $(NODE_IMAGE) sh /release/build-npm.sh
 	@echo "commit=$$(git rev-parse HEAD)" > $(DIST)/BUILD_INFO
 	@cd $(DIST) && ls | grep -vxE 'BUILD_INFO|SHA256SUMS' | xargs sha256sum > SHA256SUMS
@@ -325,22 +339,22 @@ dist: version-check-head
 dist-check: version-check-head
 	@test -f $(DIST)/BUILD_INFO || { echo "no dist/; run 'make dist' first" >&2; exit 1; }
 	@echo "=== twine check"
-	$(PODMAN) run --rm --network none -v $(DIST):/dist:ro,z $(DIST_IMAGE) \
+	$(PODMAN) run --rm --network none -v $(DIST):/dist$(VOL_RO) $(DIST_IMAGE) \
 	  sh -c 'twine check --strict /dist/*.whl /dist/*.tar.gz'
 	@echo "=== artifact contents"
 	$(PODMAN) run --rm --network none \
-	  -v $(DIST):/dist:ro,z -v $(REPO):/sdk:ro,z $(DIST_IMAGE) \
+	  -v $(DIST):/dist$(VOL_RO) -v $(REPO):/sdk$(VOL_RO) $(DIST_IMAGE) \
 	  python3 /sdk/scripts/release/check-artifacts.py /dist /sdk
 	@echo "=== wheel install and import (clean container per wheel)"
 	@for pair in $(WHEEL_IMPORTS); do \
 	  $(PODMAN) run --rm -e HOME=/tmp \
-	    -v $(DIST):/dist:ro,z -v $(RELEASE):/release:ro,z \
+	    -v $(DIST):/dist$(VOL_RO) -v $(RELEASE):/release$(VOL_RO) \
 	    $(PY_IMAGE_BASE) sh /release/install-check.sh "$${pair%%:*}" "$${pair##*:}" \
 	    || exit 1; \
 	done
 	@echo "=== npm"
 	$(PODMAN) run --rm -e HOME=/tmp \
-	  -v $(DIST):/dist:ro,z -v $(RELEASE):/release:ro,z \
+	  -v $(DIST):/dist$(VOL_RO) -v $(RELEASE):/release$(VOL_RO) \
 	  $(NODE_IMAGE) sh /release/npm-check.sh
 	@echo "=== dist-check passed"
 
@@ -349,10 +363,10 @@ dist-check: version-check-head
 ## in by name (-e PYPI_TOKEN), never as a value on a command line.
 publish-pypi: version-check-head
 	@sh $(RELEASE)/check-fresh.sh $(DIST) PYPI_TOKEN
-	$(PODMAN) run --rm -e PYPI_TOKEN -v $(DIST):/dist:ro,z $(DIST_IMAGE) sh -c '\
+	$(PODMAN) run --rm -e PYPI_TOKEN -v $(DIST):/dist$(VOL_RO) $(DIST_IMAGE) sh -c '\
 	  set -e; export TWINE_USERNAME=__token__ TWINE_PASSWORD="$$PYPI_TOKEN" TWINE_NON_INTERACTIVE=1; \
 	  twine upload /dist/edgelens_sdk-*; \
-	  for p in edgelens_cli edgelens_mcp pytest_edgelens robotframework_edgelens; do \
+	  for p in edgelens_cli edgelens_mcp edgelens_pytest edgelens_robot; do \
 	    twine upload /dist/$$p-*; \
 	  done'
 
@@ -361,7 +375,7 @@ publish-pypi: version-check-head
 ## names it.
 publish-npm: version-check-head
 	@sh $(RELEASE)/check-fresh.sh $(DIST) NPM_TOKEN
-	$(PODMAN) run --rm -e HOME=/tmp -e NPM_TOKEN -v $(DIST):/dist:ro,z $(NODE_IMAGE) sh -c '\
+	$(PODMAN) run --rm -e HOME=/tmp -e NPM_TOKEN -v $(DIST):/dist$(VOL_RO) $(NODE_IMAGE) sh -c '\
 	  set -e; echo "//registry.npmjs.org/:_authToken=\$${NPM_TOKEN}" > "$$HOME/.npmrc"; \
 	  npm publish /dist/edgelens-core-*.tgz --access public; \
 	  npm publish /dist/edgelens-playwright-plugin-*.tgz --access public'
@@ -400,3 +414,17 @@ publish-image: version-check-head
 	@for t in $(IMAGE_TAGS); do \
 	  $(PODMAN) push $(IMAGE):$$t || exit 1; \
 	done
+
+## ---------------------------------------------------------------------------
+## The release workflow. actionlint checks syntax, expressions, job graph and
+## action inputs, and runs shellcheck over every `run:` block. It reads the
+## working tree, read-only, and needs no network.
+## ---------------------------------------------------------------------------
+
+WORKFLOWS = $(wildcard .github/workflows/*.yml)
+
+workflow-lint:
+	@test -n "$(WORKFLOWS)" || { echo "no workflows under .github/workflows" >&2; exit 1; }
+	$(PODMAN) run --rm --network none \
+	  -v $(REPO):/repo$(VOL_RO) -w /repo \
+	  $(ACTIONLINT_IMAGE) -no-color $(WORKFLOWS)

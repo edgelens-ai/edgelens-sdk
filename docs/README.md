@@ -12,10 +12,10 @@ Customer-facing documentation for the EdgeLens Edge AI Device Farm.
 
 Pick the one you already use; you do not need to change runners to use EdgeLens.
 
-- **[pytest](./frameworks/pytest.md)** — `pytest-edgelens` plugin, fixtures, OS markers, scopes.
+- **[pytest](./frameworks/pytest.md)** — `edgelens-pytest` plugin, fixtures, OS markers, scopes.
 - **[Playwright](./frameworks/playwright.md)** — `@edgelens/playwright-plugin`, browser + device tests.
 - **[k6](./frameworks/k6.md)** — `xk6-edgelens` extension, sustained-load benchmarks, thresholds.
-- **[Robot Framework](./frameworks/robot.md)** — `robotframework-edgelens`, keyword-driven tests.
+- **[Robot Framework](./frameworks/robot.md)** — `edgelens-robot`, keyword-driven tests.
 
 ## CI/CD
 

@@ -5,4 +5,4 @@ Entry point: ``edgelens`` (set via the ``[project.scripts]`` table in
 directly.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"

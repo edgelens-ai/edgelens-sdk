@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pytest-edgelens"
+name = "edgelens-pytest"
 dynamic = ["version"]
 description = "pytest plugin for EdgeLens — per-session/per-test camera fixtures, CLI options, JUnit metadata."
 readme = "README.md"
@@ -11,6 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "EdgeLens", email = "support@edgelens.ai" }]
 requires-python = ">=3.9"
+keywords = ["pytest", "pytest-plugin", "edgelens", "testing"]
 classifiers = [
     "Framework :: Pytest",
     "Development Status :: 3 - Alpha",
@@ -19,7 +20,7 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
-    "edgelens-sdk>=0.2.0,<0.3",
+    "edgelens-sdk>=0.2.1,<0.3",
     "pytest>=7.0",
 ]
 

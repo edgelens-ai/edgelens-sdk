@@ -16,7 +16,7 @@ before writing.
 - Run `pip show edgelens-sdk` (or `npm ls @edgelens/core`) to confirm the
   SDK is installed. If it isn't, the test plan you're writing will
   not run — call this out before going further.
-- Check whether the project has `pytest-edgelens`, `@edgelens/playwright-plugin`,
+- Check whether the project has `edgelens-pytest`, `@edgelens/playwright-plugin`,
   `xk6-edgelens`, or `EdgeLensLibrary` (Robot) listed. The plugin is
   almost always preferable to driving the core client by hand — it
   handles allocation, wait_ready, and release.
@@ -45,7 +45,7 @@ when called from Playwright/Node.
 
 ## Canonical pytest pattern
 
-The `device` fixture is from `pytest-edgelens`. **Prefer it.**
+The `device` fixture is from `edgelens-pytest`. **Prefer it.**
 
 ```python
 import pytest

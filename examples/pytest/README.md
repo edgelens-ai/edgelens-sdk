@@ -1,6 +1,6 @@
 # pytest example — face detection latency test
 
-Complete pytest project showing `pytest-edgelens` against the
+Complete pytest project showing `edgelens-pytest` against the
 `stock-os` inference engine.
 
 ## End-to-end demo
@@ -22,7 +22,7 @@ make -C ../.. image                    # once
 The example's third-party dependencies are declared in
 `requirements.txt`, and the image build installs from it — so adding one
 is an edit to that file and a rebuild, not something assembled by hand.
-`pytest-edgelens` and `edgelens` are not on PyPI yet and are built from
+`edgelens-pytest` and `edgelens` are not on PyPI yet and are built from
 this repository's own sources during that build.
 
 Then set your API key (get one from the customer portal at

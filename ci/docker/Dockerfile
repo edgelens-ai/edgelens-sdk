@@ -120,7 +120,7 @@ RUN pip install --upgrade pip \
  && pip install -r /opt/edgelens/example-requirements.txt \
  && edgelens --version \
  && python -c "import edgelens; print('edgelens', edgelens.__version__)" \
- && python -c "import pytest_edgelens; print('pytest-edgelens ok')"
+ && python -c "import pytest_edgelens; print('edgelens-pytest ok')"
 
 # TypeScript SDK + Playwright plugin from the build stage's dists.
 # `npm pack` → `npm install -g <tarball>` resolves the file:../ dep

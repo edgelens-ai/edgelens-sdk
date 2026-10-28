@@ -12,7 +12,7 @@ Run against a live platform:
     EDGELENS_API_KEY=...  EDGELENS_BASE_URL=https://<your-api> \\
         pytest tests/test_demo_end_to_end.py -v --edgelens-os recamagined
 
-The `device` fixture (from pytest-edgelens) creates the session, waits
+The `device` fixture (from edgelens-pytest) creates the session, waits
 for readiness, and releases it in teardown. The camera is untrusted
 customer hardware, so both capture and inference run customer-provided
 binaries over SSH (`device.exec`), not a platform inference API.

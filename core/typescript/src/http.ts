@@ -201,7 +201,7 @@ export class HTTPClient {
     );
     this.clientTimeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.retry = opts.retryPolicy ?? new RetryPolicy();
-    this.userAgent = opts.userAgent ?? "edgelens-typescript/0.2.0";
+    this.userAgent = opts.userAgent ?? "edgelens-typescript/0.2.1";
     this.fetchImpl = opts.fetch ?? fetch.bind(globalThis);
   }
 

@@ -30,7 +30,7 @@ sync surface and is the right choice in pytest-asyncio tests or
 Node-driven runners.
 
 In pytest projects, prefer the `device` fixture from
-`pytest-edgelens` over hand-rolling `EdgeLensClient`. It handles
+`edgelens-pytest` over hand-rolling `EdgeLensClient`. It handles
 allocate + wait_ready + release.
 
 ```python

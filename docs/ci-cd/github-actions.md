@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.0
+      - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.1
         with:
           api-key: ${{ secrets.EDGELENS_API_KEY }}
           command: pytest tests/hardware/ --junit-xml=junit.xml
@@ -35,7 +35,7 @@ Add `EDGELENS_API_KEY` to your repository secrets first
 |---|---|---|
 | `api-key` | — | **Required.** EdgeLens API key. Pass via a secret, never in YAML. |
 | `command` | `pytest` | Test command to run inside the container. |
-| `image` | `edgelensai/edgelens-sdk:0.2.0` | Docker image to run the test command in. The default is a pinned tag; pin a version and digest in your own workflow. |
+| `image` | `edgelensai/edgelens-sdk:0.2.1` | Docker image to run the test command in. The default is a pinned tag; pin a version and digest in your own workflow. |
 | `working-directory` | `.` | Repo-relative directory to run the command from. |
 | `artifacts-path` | `test-results,playwright-report,coverage,junit.xml` | Comma-separated globs of test artifacts to upload. Empty disables upload. |
 | `artifacts-retention-days` | `14` | Days to retain uploaded artifacts. |
@@ -52,7 +52,7 @@ strategy:
     os: [stock-os, recamagined]
 steps:
   - uses: actions/checkout@v4
-  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.0
+  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.1
     with:
       api-key: ${{ secrets.EDGELENS_API_KEY }}
       command: pytest tests/hardware/ --edgelens-os=${{ matrix.os }} --junit-xml=junit.xml
@@ -72,7 +72,7 @@ If you need finer control, install the SDK yourself:
 - env:
     EDGELENS_API_KEY: ${{ secrets.EDGELENS_API_KEY }}
   run: |
-    pip install pytest-edgelens
+    pip install edgelens-pytest
     pytest tests/hardware/ --edgelens-os=stock-os
 ```
 
@@ -128,7 +128,7 @@ Common failure → cause mapping:
 Set `base-url` to point at your self-hosted EdgeLens deployment:
 
 ```yaml
-- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.0
+- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.1
   with:
     api-key: ${{ secrets.EDGELENS_API_KEY }}
     base-url: https://edgelens.internal.corp

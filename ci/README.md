@@ -4,6 +4,6 @@ Pre-built CI integrations for running EdgeLens tests in pipelines.
 
 | Subdir | Artifact | Platform | Status |
 |---|---|---|---|
-| `docker/` | `edgelensai/edgelens-sdk:0.2.0` | Docker Hub (any CI) | Planned |
-| `github-action/` | `edgelens-ai/edgelens-sdk/ci/github-action@v0.2.0` | GitHub Actions | Planned |
+| `docker/` | `edgelensai/edgelens-sdk:0.2.1` | Docker Hub (any CI) | Planned |
+| `github-action/` | `edgelens-ai/edgelens-sdk/ci/github-action@v0.2.1` | GitHub Actions | Planned |
 | `gitlab/` | YAML templates | GitLab CI | Planned |

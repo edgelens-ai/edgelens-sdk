@@ -8,7 +8,8 @@
 # label; when any TAG is missing locally or points at a different image; and
 # when IMAGE:VERSION already exists in the registry. Released tags are
 # immutable, so an existing version is never pushed again. The registry
-# lookup may fail only with "not found"; any other failure (network, auth)
+# lookup may fail only with "not found" (podman says "manifest unknown",
+# docker "no such manifest"); any other failure (network, auth)
 # refuses too, because it proves nothing about the tag.
 set -eu
 
@@ -50,7 +51,7 @@ if out=$($podman manifest inspect "$image:$version" 2>&1); then
     exit 1
 fi
 case $out in
-    *"manifest unknown"* | *"not found"* | *"NOT_FOUND"*) ;;
+    *"manifest unknown"* | *"not found"* | *"NOT_FOUND"* | *"no such manifest"*) ;;
     *)
         echo "refusing: cannot tell whether $image:$version is in the registry:" >&2
         echo "$out" >&2

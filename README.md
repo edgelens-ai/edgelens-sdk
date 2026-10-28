@@ -14,10 +14,10 @@ edgelens-sdk/
 │   ├── python/          # edgelens (PyPI)
 │   └── typescript/      # @edgelens/core (npm)
 ├── integrations/        # Test framework adapters
-│   ├── pytest/          # pytest-edgelens (PyPI)
+│   ├── pytest/          # edgelens-pytest (PyPI)
 │   ├── playwright/      # @edgelens/playwright-plugin (npm)
 │   ├── k6/              # xk6-edgelens (GitHub releases)
-│   ├── robot/           # robotframework-edgelens (PyPI)
+│   ├── robot/           # edgelens-robot (PyPI)
 │   ├── cli/             # edgelens CLI (PyPI)
 │   └── mcp/             # edgelens-mcp (PyPI)
 ├── ci/                  # CI/CD artifacts
@@ -44,20 +44,20 @@ edgelens-sdk/
 | Package | Registry | Install |
 |---|---|---|
 | `edgelens-sdk` | PyPI | `pip install edgelens-sdk` |
-| `pytest-edgelens` | PyPI | `pip install pytest-edgelens` |
-| `robotframework-edgelens` | PyPI | `pip install robotframework-edgelens` |
+| `edgelens-pytest` | PyPI | `pip install edgelens-pytest` |
+| `edgelens-robot` | PyPI | `pip install edgelens-robot` |
 | `edgelens-cli` | PyPI | `pip install edgelens-cli` |
 | `edgelens-mcp` | PyPI | `pip install edgelens-mcp` |
 | `@edgelens/core` | npm | `npm install @edgelens/core` |
 | `@edgelens/playwright-plugin` | npm | `npm install @edgelens/playwright-plugin` |
 | `xk6-edgelens` | GitHub releases | `xk6 build --with github.com/edgelens-ai/edgelens-sdk/integrations/k6` |
-| `edgelensai/edgelens-sdk` | Docker Hub | `docker pull edgelensai/edgelens-sdk:0.2.0` |
-| GitHub Action | GitHub | `uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.0` |
+| `edgelensai/edgelens-sdk` | Docker Hub | `docker pull edgelensai/edgelens-sdk:0.2.1` |
+| GitHub Action | GitHub | `uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.1` |
 
 ## Quick Start
 
 ```bash
-pip install pytest-edgelens
+pip install edgelens-pytest
 export EDGELENS_API_KEY=your_key_here
 pytest tests/
 ```
