@@ -20,21 +20,16 @@
 
 # ---- stage 1: build TypeScript packages ------------------------------------
 #
-# Base images pinned by @sha256 digest, not
-# floating tag.
+# Base images are pinned by the @sha256 digest of the multi-arch index,
+# not by floating tag. Keep the tag in front of the digest so the line
+# still says which release it is.
 #
-# Refresh procedure (run before each release tag):
-#   docker pull node:20-bookworm-slim
-#   docker inspect --format '{{index .RepoDigests 0}}' node:20-bookworm-slim
-# Copy the digest in here and into ci/docker/CHANGELOG.md.
-#
-# TODO(release): the digest below is a placeholder. The pre-release
-# build step must replace it with the live registry digest before
-# tagging. CI lint guards on the literal '<DIGEST>' substring; an
-# unsubstituted digest fails the build.
-FROM node:20-bookworm-slim AS ts-build
-# Once digest-pinned:
-# FROM node:20-bookworm-slim@sha256:<DIGEST> AS ts-build
+# Refresh procedure (both FROM lines, before each release): take the
+# index digest for the tag, for example
+#   skopeo inspect --raw docker://<image>:<tag> | sha256sum
+# or the Docker-Content-Digest header the registry returns for the tag's
+# manifest.
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS ts-build
 
 WORKDIR /build
 COPY core/typescript ./core/typescript
@@ -52,10 +47,7 @@ RUN cd integrations/playwright \
 # ---- stage 2: final runtime ------------------------------------------------
 #
 # Same digest-pin discipline as stage 1.
-# TODO(release): replace floating tag with @sha256:<DIGEST>.
-FROM mcr.microsoft.com/playwright:v1.55.0-noble
-# Once digest-pinned:
-# FROM mcr.microsoft.com/playwright:v1.55.0-noble@sha256:<DIGEST>
+FROM mcr.microsoft.com/playwright:v1.55.0-noble@sha256:b27e719ecbfef153e13fd24e8341736733bf2658b229677eb21ff57ff5d7fb29
 
 # Python toolchain + curl (for the k6 download below).
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -69,30 +61,21 @@ ENV PATH=/opt/edgelens/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-# k6 binary. Pin to a known version AND
-# verify the sha256 checksum before extract. A MITM or registry
-# compromise that swaps the tarball would otherwise land an arbitrary
-# binary in every CI pipeline.
+# k6 binary, pinned by version and verified against the upstream sha256
+# before extract. A swapped tarball fails the build.
 #
-# Refresh K6_VERSION + K6_SHA256 together by downloading the official
-# checksums file from https://github.com/grafana/k6/releases/tag/<version>
-# and copying the linux-amd64 entry. Don't compute it locally — the
-# point of the check is that we verify against an upstream-signed
-# value, not against the tarball we just pulled.
-# TODO(release): K6_SHA256 below is a placeholder — replace with the
-# real linux-amd64 checksum from
-# https://github.com/grafana/k6/releases/tag/${K6_VERSION} on each
-# K6_VERSION bump. Don't recompute locally; the point of the check is
-# to verify against an upstream-signed value.
+# Refresh procedure: bump K6_VERSION and K6_SHA256 together. Take the
+# k6-<version>-linux-amd64.tar.gz line from the checksums file published
+# with the release,
+#   https://github.com/grafana/k6/releases/download/<version>/k6-<version>-checksums.txt
+# never from a hash computed over a local download: the check verifies
+# against upstream, not against the tarball just pulled. K6_VERSION
+# follows the go.k6.io/k6 version in integrations/k6/go.mod.
 ARG K6_VERSION=v0.55.0
-ARG K6_SHA256=REPLACE_AT_RELEASE_TIME_WITH_UPSTREAM_LINUX_AMD64_SHA256
+ARG K6_SHA256=47a43a8dbb4c1f5d5bd7b8ed6a1b8c83b35546acf989b78400b4e6ce3adaf628
 RUN curl -fsSL "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-amd64.tar.gz" \
       -o /tmp/k6.tgz \
- && if [ "$K6_SHA256" != "REPLACE_AT_RELEASE_TIME_WITH_UPSTREAM_LINUX_AMD64_SHA256" ]; then \
-        echo "${K6_SHA256}  /tmp/k6.tgz" | sha256sum -c -; \
-    else \
-        echo "WARNING: k6 sha256 not pinned — image built without integrity check" >&2; \
-    fi \
+ && echo "${K6_SHA256}  /tmp/k6.tgz" | sha256sum -c - \
  && tar -xzf /tmp/k6.tgz -C /tmp \
  && mv "/tmp/k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6 \
  && chmod +x /usr/local/bin/k6 \

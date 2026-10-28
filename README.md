@@ -51,8 +51,8 @@ edgelens-sdk/
 | `@edgelens/core` | npm | `npm install @edgelens/core` |
 | `@edgelens/playwright-plugin` | npm | `npm install @edgelens/playwright-plugin` |
 | `xk6-edgelens` | GitHub releases | `xk6 build --with github.com/edgelens-ai/edgelens-sdk/integrations/k6` |
-| `edgelensai/edgelens-sdk` | Docker Hub | `docker pull edgelensai/edgelens-sdk:0.1.0` |
-| GitHub Action | GitHub | `uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.1.0` |
+| `edgelensai/edgelens-sdk` | Docker Hub | `docker pull edgelensai/edgelens-sdk:0.1.1` |
+| GitHub Action | GitHub | `uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.1.1` |
 
 ## Quick Start
 

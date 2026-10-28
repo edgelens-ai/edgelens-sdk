@@ -9,8 +9,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
-    "@edgelens/core": "^0.1.0",
-    "@edgelens/playwright-plugin": "^0.1.0",
+    "@edgelens/core": "^0.1.1",
+    "@edgelens/playwright-plugin": "^0.1.1",
     "typescript": "^5.4.0"
   }
 }

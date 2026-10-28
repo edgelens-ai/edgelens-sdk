@@ -104,7 +104,7 @@ in and you're set:
 ### GitHub Actions
 
 ```yaml
-- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.1.0
+- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.1.1
   with:
     api-key: ${{ secrets.EDGELENS_API_KEY }}
     command: robot --output output.xml tests/
