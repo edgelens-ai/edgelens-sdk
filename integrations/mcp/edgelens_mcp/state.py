@@ -13,6 +13,12 @@ from typing import Optional
 
 from edgelens import EdgeLensClient, Session
 
+ALLOW_EXTERNAL_SESSIONS_ENV = "EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS"
+
+
+def external_sessions_allowed() -> bool:
+    return os.environ.get(ALLOW_EXTERNAL_SESSIONS_ENV) == "1"
+
 
 @dataclass
 class ServerState:
@@ -45,7 +51,12 @@ class ServerState:
     def get(self, session_id: Optional[str]) -> Session:
         """Resolve a session id (or the current-session pointer) to a Session.
 
-        Raises ValueError if the explicit id is unknown and we can't refresh it.
+        Only sessions this process created are resolved by default. An id
+        it did not create is fetched from the API only when the operator
+        set ``EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS=1``; otherwise it raises
+        ValueError naming that opt-in. The API key may reach sessions owned
+        by teammates on a shared account, and the model must not release
+        or exec on those by guessing or being handed an id.
         """
         sid = session_id or self._current_session_id
         if sid is None:
@@ -56,8 +67,13 @@ class ServerState:
         existing = self._sessions.get(sid)
         if existing is not None:
             return existing
-        # Unknown id — try to fetch it; this lets the user resume a session
-        # the server didn't create.
+        if not external_sessions_allowed():
+            raise ValueError(
+                f"session {sid} was not created by this MCP server, so it "
+                "is refused. Tools act only on sessions this server created. "
+                f"To resume another session, the operator must set "
+                f"{ALLOW_EXTERNAL_SESSIONS_ENV}=1 in the MCP host env."
+            )
         session = self.client().get_session(sid)
         self._sessions[sid] = session
         return session

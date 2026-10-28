@@ -53,6 +53,37 @@ def test_login_json_mode_emits_json():
     assert data["saved"] is True
 
 
+def test_login_prompts_with_hidden_input_on_a_tty(monkeypatch: pytest.MonkeyPatch):
+    from edgelens_cli import main as main_mod
+
+    monkeypatch.setattr(main_mod, "_stdin_is_tty", lambda: True)
+    r = _runner().invoke(cli, ["login"], input="el_test_prompted\n")
+    assert r.exit_code == 0, r.output
+    assert "API key" in r.output
+    assert "el_test_prompted" not in r.output
+    assert state_mod.load_config().api_key == "el_test_prompted"
+
+
+def test_login_reads_key_from_stdin_when_not_a_tty(monkeypatch: pytest.MonkeyPatch):
+    from edgelens_cli import main as main_mod
+
+    monkeypatch.setattr(main_mod, "_stdin_is_tty", lambda: False)
+    r = _runner().invoke(cli, ["login"], input="el_test_piped\n")
+    assert r.exit_code == 0, r.output
+    assert "API key" not in r.output
+    assert "el_test_piped" not in r.output
+    assert state_mod.load_config().api_key == "el_test_piped"
+
+
+def test_login_rejects_empty_stdin(monkeypatch: pytest.MonkeyPatch):
+    from edgelens_cli import main as main_mod
+
+    monkeypatch.setattr(main_mod, "_stdin_is_tty", lambda: False)
+    r = _runner().invoke(cli, ["login"], input="\n")
+    assert r.exit_code == 2
+    assert state_mod.load_config().api_key is None
+
+
 def test_use_sets_current_session():
     r = _runner().invoke(cli, ["use", "sess_abc"])
     assert r.exit_code == 0

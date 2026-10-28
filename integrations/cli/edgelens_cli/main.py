@@ -13,6 +13,7 @@ machine-readable output. Subcommands fan out:
 
 from __future__ import annotations
 
+import sys
 from typing import Optional
 
 import click
@@ -32,7 +33,11 @@ from edgelens_cli.state import Config, clear_current_session, save_config, set_c
 @click.option(
     "--api-key",
     envvar="EDGELENS_API_KEY",
-    help="Override the API key. Default reads ~/.edgelens/config.json or EDGELENS_API_KEY.",
+    help=(
+        "Override the API key. Default reads EDGELENS_API_KEY or "
+        "~/.edgelens/config.json. Prefer EDGELENS_API_KEY: a key on the "
+        "command line is visible in the process list and shell history."
+    ),
 )
 @click.option(
     "--base-url",
@@ -53,12 +58,37 @@ def cli(
     ctx.obj["base_url"] = base_url
 
 
+def _stdin_is_tty() -> bool:
+    return sys.stdin.isatty()
+
+
+def _read_api_key() -> str:
+    if _stdin_is_tty():
+        return click.prompt("API key", hide_input=True)
+    return sys.stdin.readline()
+
+
 @cli.command()
-@click.option("--api-key", required=True, help="API key to persist.")
+@click.option(
+    "--api-key", default=None,
+    help=(
+        "API key to persist. Omit it to be prompted (input hidden) or to "
+        "pipe the key on stdin. Prefer that: a key on the command line is "
+        "visible in the process list and shell history."
+    ),
+)
 @click.option("--base-url", default=None, help="Optional platform base URL.")
 @click.pass_context
-def login(ctx: click.Context, api_key: str, base_url: Optional[str]) -> None:
-    """Persist credentials to ~/.edgelens/config.json (chmod 0600)."""
+def login(ctx: click.Context, api_key: Optional[str], base_url: Optional[str]) -> None:
+    """Persist credentials to ~/.edgelens/config.json (chmod 0600).
+
+    The key is read from a hidden prompt, or from stdin when stdin is not
+    a terminal.
+    """
+    if api_key is None:
+        api_key = _read_api_key().strip()
+    if not api_key:
+        error("no API key given", exit_code=2)
     save_config(Config(api_key=api_key, base_url=base_url))
     emit(
         {"saved": True, "config_path": "~/.edgelens/config.json"},

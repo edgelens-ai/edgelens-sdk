@@ -4,10 +4,10 @@ Demonstrates the `device` fixture from pytest-edgelens against both
 OS tiers. Every test is one acceptance criterion (no bundled
 assertions) so a failure points straight at the broken bar.
 
-Run against the platform with a real key:
+Run against the platform with a real key in ``EDGELENS_API_KEY``:
 
-    pytest -v --edgelens-key=el_...            # stock-os (default)
-    pytest -v --edgelens-os=recamagined --edgelens-key=el_...
+    pytest -v                            # stock-os (default)
+    pytest -v --edgelens-os=recamagined
 
 Model + binary assets live in ``../models`` and are resolved by
 ``asset()`` (below) relative to this file, so the suite runs from any

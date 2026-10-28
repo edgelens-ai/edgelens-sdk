@@ -40,8 +40,12 @@ export const options = {
 // Files must be opened at init scope (a k6 rule); upload them in setup().
 const model = open("./models/face.cvimodel", "b");
 
+// One client per VU at init scope: setup(), the default function and
+// teardown() all use the same key and base URL. connect() throws if the
+// key is empty.
+const client = edgelens.connect({ apiKey: __ENV.EDGELENS_API_KEY });
+
 export function setup() {
-  const client = edgelens.connect({ apiKey: __ENV.EDGELENS_API_KEY });
   const session = client.createSession({
     deviceType: "recamera-2002",
     os: "stock-os",
@@ -53,7 +57,7 @@ export function setup() {
 }
 
 export default function (data) {
-  const stats = edgelens.resume(data.sessionId).device.inference.stats();
+  const stats = client.resume(data.sessionId).device.inference.stats();
   check(stats, {
     "fps holding": (s) => s.fps.avg >= 15,
     "p95 latency": (s) => s.latency_ms.p95 < 100,
@@ -61,7 +65,7 @@ export default function (data) {
 }
 
 export function teardown(data) {
-  edgelens.resume(data.sessionId).release();
+  client.resume(data.sessionId).release();
 }
 ```
 
@@ -75,9 +79,9 @@ Run:
 
 | JS symbol | What |
 |---|---|
-| `edgelens.connect({apiKey, baseUrl?})` | Returns a `Client`. |
+| `edgelens.connect({apiKey, baseUrl?})` | Returns a `Client`. Throws if `apiKey` is empty. Call it at init scope. |
 | `client.createSession({deviceType, os, imageVersion?, timeout?})` | Allocates a device. |
-| `edgelens.resume(sessionId)` | Re-attaches to an existing session (for use inside the default function). |
+| `client.resume(sessionId)` | Re-attaches to an existing session by id, with this client's key and base URL. Use it in the default function and in `teardown()`. |
 | `session.waitReady({timeout?, pollInterval?})` | Block until `status=ready`. |
 | `session.device.deploy({model, config?, files?})` | Upload a model, plus optional config and extra files. Each is `{ name, data }`, where `data` comes from `open(path, "b")` at init scope. The upload times out after 10 minutes. |
 | `session.device.inference.start() / .stop()` | Toggle the built-in engine (`stock-os` only). |
@@ -115,6 +119,13 @@ go mod tidy
 go build ./...        # validates the package compiles
 ```
 
+The unit tests run in a pinned golang container from the repo root, with
+no Go on the host:
+
+```sh
+make test-go
+```
+
 To test against a local k6 development build:
 
 ```sh
@@ -127,7 +138,7 @@ source instead of fetching from GitHub.
 ## Anti-patterns
 
 - One session per VU iteration — sessions take ~30 s to provision.
-  Allocate in `setup()`, attach via `edgelens.resume(sessionId)` in
+  Allocate in `setup()`, attach via `client.resume(sessionId)` in
   the default function.
 - Threshold expressions referencing fields the extension doesn't emit
   yet (`inference_detection_count` etc., planned for v1.1).

@@ -46,16 +46,28 @@ export function buildClient(opts: EdgelensFixtureOptions): EdgeLensClient {
  * fixture setup); the caller is responsible for invoking
  * `releaseSession()` on the result in a `finally` to avoid leaking
  * a billable device.
+ *
+ * If `waitReady` rejects, the caller never receives the session, so
+ * it is released here before the original error is rethrown. A
+ * failed release goes to `onReleaseError` (default `console.warn`)
+ * and never replaces the original error.
  */
 export async function allocateSession(
   client: EdgeLensClient,
   opts: EdgelensFixtureOptions = {},
+  onReleaseError: (err: unknown) => void = (err) =>
+    console.warn("edgelens: session release failed after waitReady error:", err),
 ): Promise<Session> {
   const session = await client.createSession(opts.session ?? {});
-  await session.waitReady(
-    opts.waitReadyTimeoutMs ?? DEFAULTS.waitReadyTimeoutMs,
-    opts.waitReadyPollMs ?? DEFAULTS.waitReadyPollMs,
-  );
+  try {
+    await session.waitReady(
+      opts.waitReadyTimeoutMs ?? DEFAULTS.waitReadyTimeoutMs,
+      opts.waitReadyPollMs ?? DEFAULTS.waitReadyPollMs,
+    );
+  } catch (err) {
+    await releaseSession(session, onReleaseError);
+    throw err;
+  }
   return session;
 }
 

@@ -93,7 +93,9 @@ class DeviceConnection(BaseModel):
     host: str
     ssh_port: int = 22
     ssh_user: str
-    ssh_password: str
+    # Kept out of repr()/str() so assertion output, tracebacks and logs
+    # never carry it. model_dump() still includes it.
+    ssh_password: str = Field(repr=False)
     web_ui: Optional[str] = None
     os: OSType
 
@@ -117,4 +119,4 @@ class SSHCredentials(BaseModel):
     user: str
     host: str
     port: int = 22
-    password: str
+    password: str = Field(repr=False)

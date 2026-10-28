@@ -3,6 +3,7 @@ package edgelens
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -57,6 +58,21 @@ func (c *Client) CreateSession(opts CreateSessionOptions) (*Session, error) {
 		client: c,
 		module: c.module,
 	}, nil
+}
+
+// Resume re-attaches to an existing session by id, using this client's
+// key and base URL. setup() returns the id; the default function and
+// teardown() resume it.
+//
+//	client.resume(data.sessionId).release();
+func (c *Client) Resume(sessionID string) (*Session, error) {
+	if c.apiKey == "" {
+		return nil, errors.New("edgelens resume: client has no apiKey")
+	}
+	if sessionID == "" {
+		return nil, errors.New("edgelens resume: session id is required")
+	}
+	return &Session{ID: sessionID, client: c, module: c.module}, nil
 }
 
 const (

@@ -25,7 +25,7 @@ The first test pays the flash cost; subsequent tests reuse it.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--edgelens-key` | — | API key. Falls back to `$EDGELENS_API_KEY`. |
+| `--edgelens-key` | — | API key. Prefer `$EDGELENS_API_KEY`: a value on the command line is visible in the process list and shell history. |
 | `--edgelens-base-url` | — | Self-hosted EdgeLens deployments. |
 | `--edgelens-os` | `stock-os` | OS to flash. Alt: `recamagined`. |
 | `--edgelens-device-type` | `recamera-2002` | Device type to allocate. |

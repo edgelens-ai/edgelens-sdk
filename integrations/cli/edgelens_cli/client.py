@@ -31,8 +31,7 @@ def build_client(
     effective_url = base_url or config.base_url
     if not effective_key:
         raise click.ClickException(
-            "No API key. Run `edgelens login --api-key <key>` or pass "
-            "--api-key, or set EDGELENS_API_KEY."
+            "No API key. Set EDGELENS_API_KEY or run `edgelens login`."
         )
     kwargs: dict = {"api_key": effective_key}
     if effective_url:

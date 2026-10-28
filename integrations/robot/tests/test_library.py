@@ -64,6 +64,51 @@ def test_request_device_invalid_os_raises_library_error():
     assert lib._session is None
 
 
+def _lib_whose_wait_raises(exc):
+    lib = EdgeLensLibrary(api_key="el_test_k")
+    fake_client = MagicMock()
+    fake_session = MagicMock()
+    fake_session.id = "sess_alloc"
+    fake_session.wait_ready.side_effect = exc
+    fake_client.create_session.return_value = fake_session
+    lib._client = fake_client
+    return lib, fake_session
+
+
+def test_request_device_releases_when_wait_ready_fails():
+    original = TimeoutError("never became ready")
+    lib, fake_session = _lib_whose_wait_raises(original)
+
+    with pytest.raises(TimeoutError) as excinfo:
+        lib.request_device()
+    assert excinfo.value is original
+    fake_session.release.assert_called_once_with()
+    assert lib._session is None
+
+
+def test_request_device_releases_on_keyboard_interrupt():
+    lib, fake_session = _lib_whose_wait_raises(KeyboardInterrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        lib.request_device()
+    fake_session.release.assert_called_once_with()
+    assert lib._session is None
+
+
+def test_request_device_release_failure_does_not_mask_original():
+    original = EdgeLensError("session errored")
+    lib, fake_session = _lib_whose_wait_raises(original)
+    fake_session.release.side_effect = EdgeLensError("release failed")
+
+    with patch("EdgeLensLibrary.library.robot_logger") as fake_logger:
+        with pytest.raises(EdgeLensError) as excinfo:
+            lib.request_device()
+    assert excinfo.value is original
+    fake_session.release.assert_called_once_with()
+    fake_logger.warn.assert_called_once()
+    assert "release failed" in fake_logger.warn.call_args.args[0]
+
+
 def test_release_device_calls_release_and_clears(lib_with_session):
     lib, fake_session = lib_with_session
     lib.release_device()
@@ -138,15 +183,105 @@ def test_get_ssh_details_omits_password(lib_with_session):
     assert "password" not in out
 
 
-def test_get_ssh_password_returns_cleartext_but_uses_trace_log(lib_with_session):
-    """The split keyword still exposes the password to keyword callers
-    that explicitly request it, but the value is only logged at
-    TRACE level (Robot's lowest verbosity) and never as HTML."""
+def test_get_ssh_password_returns_cleartext(lib_with_session):
     lib, fake_session = lib_with_session
     creds = MagicMock(user="recamera", host="192.0.2.42", port=30007, password="hunter2")
     fake_session.device.ssh.return_value = creds
 
     assert lib.get_ssh_password() == "hunter2"
+
+
+def test_set_ssh_password_variable_rejects_unknown_scope(lib_with_session):
+    lib, _ = lib_with_session
+    with pytest.raises(ValueError, match="scope"):
+        lib.set_ssh_password_variable(scope="KEYWORD")
+
+
+# ---- password vs. Robot's own log, run in-process ----------------------------
+
+# Contains Robot variable syntax and a backslash so the test also proves the
+# value is stored verbatim, not re-resolved as Robot data.
+_STUB_PASSWORD = "Pw-${not_a_var}-\\\\-7f3e9a"
+
+_STUB_LIBRARY = f'''
+from robot.api.deco import keyword
+
+from EdgeLensLibrary import EdgeLensLibrary
+from edgelens.types import SSHCredentials
+
+PASSWORD = {_STUB_PASSWORD!r}
+
+
+class _Device:
+    def ssh(self):
+        return SSHCredentials(
+            user="recamera", host="192.0.2.42", port=30007, password=PASSWORD,
+        )
+
+
+class _Session:
+    id = "sess_stub"
+    device = _Device()
+
+
+class StubEdgeLensLibrary(EdgeLensLibrary):
+    def __init__(self):
+        super().__init__(api_key="el_test_k")
+        self._session = _Session()
+
+    @keyword("Password Should Be Received")
+    def password_should_be_received(self, value):
+        if value != PASSWORD:
+            raise AssertionError("password did not reach the suite intact")
+'''
+
+
+def _run_robot_suite(tmp_path, body: str) -> tuple[int, str]:
+    import io
+
+    import robot
+
+    (tmp_path / "edgelens_stub_library.py").write_text(_STUB_LIBRARY)
+    suite = tmp_path / "suite.robot"
+    suite.write_text(
+        "*** Settings ***\n"
+        "Library    edgelens_stub_library.StubEdgeLensLibrary\n\n"
+        "*** Test Cases ***\n"
+        "Use The Password\n" + body
+    )
+    output = tmp_path / "output.xml"
+    rc = robot.run(
+        str(suite), outputdir=str(tmp_path), output=str(output),
+        log="NONE", report="NONE", pythonpath=[str(tmp_path)],
+        stdout=io.StringIO(), stderr=io.StringIO(),
+    )
+    return rc, output.read_text()
+
+
+def test_set_ssh_password_variable_value_not_logged(tmp_path):
+    rc, output_xml = _run_robot_suite(
+        tmp_path,
+        "    Set SSH Password Variable\n"
+        "    Password Should Be Received    ${SSH_PASSWORD}\n"
+        "    Set SSH Password Variable    $SUITE_PW    scope=SUITE\n"
+        "    Password Should Be Received    ${SUITE_PW}\n"
+        "    Log    logging-restored-marker\n",
+    )
+    assert rc == 0, output_xml
+    assert "7f3e9a" not in output_xml
+    assert "logging-restored-marker" in output_xml
+
+
+def test_get_ssh_password_assignment_is_logged_by_robot(tmp_path):
+    """Documents why the safe keyword exists: Robot itself writes the
+    assigned return value to output.xml at INFO."""
+    rc, output_xml = _run_robot_suite(
+        tmp_path,
+        "    ${pw}=    Get SSH Password\n"
+        "    Password Should Be Received    ${pw}\n",
+    )
+    assert rc == 0, output_xml
+    assert "7f3e9a" in output_xml
 
 
 # ---- display + inference ----------------------------------------------------

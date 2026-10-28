@@ -70,9 +70,9 @@ On reCamaginedOS, `deploy(model=..., files=[...])` places the model and
 each file in `/userdata/Models/` under its base filename. Files arrive
 readable but not executable: `chmod +x` a deployed binary before running it.
 
-Invoke pytest with `--edgelens-key=$EDGELENS_API_KEY` (or rely on the
-env var) and `--edgelens-os=stock-os|recamagined` if the marker isn't
-set. Scope defaults to `session` — set `--edgelens-scope=function`
+Invoke pytest with `$EDGELENS_API_KEY` set in the environment (never
+pass the key on the command line) and `--edgelens-os=stock-os|recamagined`
+if the marker isn't set. Scope defaults to `session` — set `--edgelens-scope=function`
 only when each test mutates device state irrecoverably.
 
 ## OS tiers
@@ -149,4 +149,8 @@ Always surface the full error chain — don't `try/except: pass` to make output 
 
 The EdgeLens MCP server (`integrations/mcp/`) exposes the same surface
 as a tool catalogue when the user wants the LLM to drive sessions
-directly instead of just generating test code.
+directly instead of just generating test code. Its tools act only on
+sessions that server created unless the operator sets
+`EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS=1`. Its `exec_command` tool is off
+unless the operator sets `EDGELENS_MCP_EXEC_ENABLED=1`, and once enabled
+it is an unrestricted shell on the device: no command is filtered.

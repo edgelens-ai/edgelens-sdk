@@ -63,7 +63,8 @@ Library    EdgeLensLibrary    api_key=%{EDGELENS_API_KEY}    scope=TEST
 | `Get Device Info` | Hostname, hardware, OS version. |
 | `Get Stream URL` | Camera stream WebSocket URL (stock-os only). |
 | `Get SSH Details` | `{user, host, port}` dict. |
-| `Get SSH Password` | SSH password (kept out of `log.html` at default log level). |
+| `Set SSH Password Variable    name=${SSH_PASSWORD}    scope=TEST` | Store the SSH password in a variable without logging its value. Robot logs keyword arguments only at TRACE, so passing `${SSH_PASSWORD}` on stays out of `log.html` and `output.xml` at the default log level. |
+| `Get SSH Password` | SSH password as a return value. **Robot logs the assignment `${pw}=    Get SSH Password` at INFO, value included**, so the password lands in `log.html` and `output.xml`, which CI presets upload as artifacts. Use `Set SSH Password Variable` instead. |
 
 ## Patterns
 

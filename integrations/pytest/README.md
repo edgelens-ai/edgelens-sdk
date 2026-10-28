@@ -31,9 +31,8 @@ def test_inference_latency(device):
 Run it:
 
 ```sh
-pytest --edgelens-key=$EDGELENS_API_KEY
-# or
-EDGELENS_API_KEY=el_test_xxx pytest
+export EDGELENS_API_KEY=el_test_xxx
+pytest
 ```
 
 `device` is **session-scoped** by default — one camera for the whole
@@ -53,7 +52,7 @@ tests mutate device state in ways the next test would inherit broken.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--edgelens-key` | — | API key. Falls back to `$EDGELENS_API_KEY`. |
+| `--edgelens-key` | — | API key. Prefer `$EDGELENS_API_KEY`: a value on the command line is visible in the process list and shell history. |
 | `--edgelens-base-url` | — | Self-hosted EdgeLens deployments. |
 | `--edgelens-os` | `stock-os` | OS to flash. Alt: `recamagined`. |
 | `--edgelens-device-type` | `recamera-2002` | Device type to allocate. |
@@ -119,7 +118,7 @@ strategy:
     os: [stock, recamagined]
 steps:
   - uses: actions/checkout@v4
-  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.1.1
+  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.0
     with:
       api-key: ${{ secrets.EDGELENS_API_KEY }}
       command: pytest --edgelens-os=${{ matrix.os }} --junit-xml=junit.xml

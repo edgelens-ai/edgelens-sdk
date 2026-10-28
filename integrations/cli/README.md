@@ -17,7 +17,7 @@ Adds an `edgelens` executable to your PATH.
 ## Quickstart
 
 ```sh
-edgelens login --api-key el_test_yourkey
+edgelens login            # prompts for the key; input is hidden
 edgelens session create --device recamera-2002 --os stock-os --timeout 600
 # session id is remembered as 'current' — follow-up commands target it
 edgelens info
@@ -25,6 +25,12 @@ edgelens exec 'uname -a'
 edgelens deploy ./face.cvimodel
 edgelens inference run --duration 30
 edgelens session release
+```
+
+In a script, pipe the key on stdin instead of passing it as an argument:
+
+```sh
+printf '%s\n' "$EDGELENS_API_KEY" | edgelens login
 ```
 
 `--json` on the root command emits machine-readable JSON on every call,
@@ -68,8 +74,8 @@ edgelens inference run [--duration N --collect-frames]
 
 | Source | Used for |
 |---|---|
-| `--api-key`, `--base-url` flags | One-off overrides |
-| `EDGELENS_API_KEY`, `EDGELENS_BASE_URL` env vars | Shell-session-scoped |
+| `EDGELENS_API_KEY`, `EDGELENS_BASE_URL` env vars | Shell-session-scoped; the recommended way to pass a key in CI |
+| `--base-url` flag | One-off override |
 | `~/.edgelens/config.json` (chmod 0600) | Persistent default — set via `edgelens login` |
 
 Current-session state lives at `~/.edgelens/state.json` (chmod 0600).

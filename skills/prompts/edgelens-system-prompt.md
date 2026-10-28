@@ -90,7 +90,7 @@ Use the string `"stock-os"` everywhere the API surface takes a string.
 
 The most common failures and what they actually mean:
 
-- `AuthenticationError` — `$EDGELENS_API_KEY` is unset, malformed, or revoked. Check `echo $EDGELENS_API_KEY` and the portal's key list.
+- `AuthenticationError` — `$EDGELENS_API_KEY` is unset, malformed, or revoked. Check that it is set with `test -n "$EDGELENS_API_KEY" && echo set` (never print the value) and compare against the portal's key list.
 - `SessionError` on `wait_ready` — the device couldn't be flashed. Surface the `session.error` field; it carries the platform's reason.
 - `TimeoutError` on `wait_ready` — the caller passed an explicit `timeout=` ceiling and it fired, OR the api never returned a server `deadline` (broken response) and the SDK's safety-net (~30 min) fired. Not needed in normal use — the SDK trusts the platform's deadline.
 - `DeviceError` with HTTP 429 from `create_session` — the customer's `max_concurrent_sessions` is full. Release prior sessions or upgrade the plan.

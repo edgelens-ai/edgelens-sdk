@@ -105,6 +105,41 @@ describe("allocateSession", () => {
       allocateSession(client, { waitReadyTimeoutMs: 1_000, waitReadyPollMs: 10 }),
     ).rejects.toThrow();
   });
+
+  function clientWhoseWaitRejects(original: Error, release: () => Promise<void>) {
+    const fakeSession = {
+      id: "sess_wait",
+      waitReady: vi.fn(async () => {
+        throw original;
+      }),
+      release: vi.fn(release),
+    };
+    const client = {
+      createSession: vi.fn(async () => fakeSession),
+    } as unknown as EdgeLensClient;
+    return { client, fakeSession };
+  }
+
+  it("releases the session when waitReady throws", async () => {
+    const original = new Error("never became ready");
+    const { client, fakeSession } = clientWhoseWaitRejects(original, async () => undefined);
+
+    await expect(allocateSession(client)).rejects.toBe(original);
+    expect(fakeSession.release).toHaveBeenCalledOnce();
+  });
+
+  it("rethrows the original error when the release also fails", async () => {
+    const original = new Error("never became ready");
+    const { client, fakeSession } = clientWhoseWaitRejects(original, async () => {
+      throw new Error("release failed");
+    });
+    const onReleaseError = vi.fn();
+
+    await expect(allocateSession(client, {}, onReleaseError)).rejects.toBe(original);
+    expect(fakeSession.release).toHaveBeenCalledOnce();
+    expect(onReleaseError).toHaveBeenCalledOnce();
+    expect((onReleaseError.mock.calls[0]![0] as Error).message).toBe("release failed");
+  });
 });
 
 describe("releaseSession", () => {

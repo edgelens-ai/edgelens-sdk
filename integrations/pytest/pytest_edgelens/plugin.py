@@ -63,7 +63,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("edgelens", "EdgeLens device-farm options")
     group.addoption(
         "--edgelens-key", default=None,
-        help="EdgeLens API key. Default: $EDGELENS_API_KEY.",
+        help=(
+            "EdgeLens API key. Prefer EDGELENS_API_KEY: a key on the "
+            "command line is visible in the process list and CI logs."
+        ),
     )
     group.addoption(
         "--edgelens-base-url", default=None,

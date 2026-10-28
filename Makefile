@@ -46,6 +46,9 @@
 #                        under TEST_PYTHON_PATHS).
 #   make test-typescript TypeScript half only (vitest run against
 #                        core/typescript/tests).
+#   make test-go         k6 extension only: `go test ./...` in
+#                        integrations/k6, in a pinned golang container.
+#                        Needs the network once to fill the module cache.
 #   make test-image      Build both test images if either is missing.
 #                        A no-op when they both already exist locally.
 #   make test-rebuild    Force-rebuild both test images, then run `make test`.
@@ -108,6 +111,11 @@ ARGS ?=
 
 REPO := $(CURDIR)
 
+# The Go toolchain for the k6 extension, pinned by digest. GO_MODCACHE is a
+# named podman volume so the module download happens once, not per run.
+GO_IMAGE    ?= docker.io/library/golang:1.24.13-bookworm@sha256:1a6d4452c65dea36aac2e2d606b01b4a029ec90cc1ae53890540ce6173ea77ac
+GO_MODCACHE ?= edgelens-sdk-gomod
+
 # Release tooling. DIST_IMAGE carries the pinned build and twine
 # (Dockerfile.dist); NODE_IMAGE is the same pinned node base the TypeScript
 # test image uses. PY_IMAGE_BASE is the bare python base: wheels are
@@ -138,7 +146,7 @@ WHEEL_IMPORTS = \
   pytest_edgelens-*.whl:pytest_edgelens \
   robotframework_edgelens-*.whl:EdgeLensLibrary
 
-.PHONY: help test test-python test-typescript test-image test-rebuild \
+.PHONY: help test test-python test-typescript test-go test-image test-rebuild \
         test-image-python test-image-typescript \
         test-rebuild-python test-rebuild-typescript \
         version-check version-check-head set-version \
@@ -212,6 +220,18 @@ test-typescript: test-image-typescript
 	$(PODMAN) run --rm --network none \
 	  $(TS_IMAGE) \
 	  npm test --silent -- $(ARGS)
+
+## k6 extension -- go test in integrations/k6. Not part of `make test`
+## yet: unlike the other halves it needs the network on its first run, to
+## fill the module cache from go.sum. -mod=readonly keeps go.mod and go.sum
+## exactly as committed; the source mount is read-only besides.
+test-go:
+	$(PODMAN) run --rm \
+	  -v $(REPO)/integrations/k6:/src:ro,z -w /src \
+	  -v $(GO_MODCACHE):/go/pkg/mod \
+	  -e GOFLAGS=-mod=readonly -e GOTOOLCHAIN=local -e GOCACHE=/tmp/go-build \
+	  $(GO_IMAGE) \
+	  go test ./... $(ARGS)
 
 ## Build both images on absence. `podman image exists` is the check rather
 ## than a timestamp, because no host file's mtime tracks an image layer -- a

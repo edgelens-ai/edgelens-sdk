@@ -82,11 +82,14 @@ Once connected, the host gets these tools (same surface as the SDK and CLI):
 | `release_session` | End session, return device to pool. |
 | `list_sessions` | Sessions this server has touched (process-local). |
 
+Every tool acts only on sessions this server process created; see
+[Session scope](#session-scope).
+
 ### Device ops
 
 | Tool | What |
 |---|---|
-| `exec_command` | Run a shell command on the camera via SSH. |
+| `exec_command` | Run a shell command on the camera via SSH. Off by default; see [Exec](#exec). |
 | `deploy_model` | Deploy a model + optional config + extra files (local path or URL). |
 | `get_ssh_details` | Returns `user/host/port/password` + a ready-to-paste `ssh` command. |
 | `get_device_info` | Full device-info report. |
@@ -124,12 +127,43 @@ claude:  → exec_command(command="uname -r")
          ← {"stdout": "5.10.10-edgelens", ...}
 ```
 
+## Session scope
+
+By default every tool acts only on sessions this server process created
+with `create_session`. A `session_id` it did not create is refused with an
+error that names the opt-in, and the server never fetches it from the API.
+Your API key may reach sessions owned by teammates on a shared account;
+without this scope, a model handed or guessing such an id could release it
+or run commands on its device.
+
+To resume a session created elsewhere (another process, the CLI, a
+teammate), set `EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS=1` in the host's `env`
+block. The server then fetches any id the API key can reach, and the model
+can release or act on it.
+
+## Exec
+
+`exec_command` is off by default. To enable it, set
+`EDGELENS_MCP_EXEC_ENABLED=1` in the host's `env` block.
+
+**Enabling exec gives the model an unrestricted shell on the device.** No
+command is filtered: anything the device user can run, including
+destructive commands, will run. A pattern filter over a shell command line
+cannot be made complete (quoting, absolute paths, variables and encodings
+all get past one), so the server does not pretend to have one. Enable exec
+only for a session you are prepared to lose, and rely on your MCP host's
+per-call approval if you want a human to see each command.
+
 ## Environment
 
 | Var | Purpose |
 |---|---|
 | `EDGELENS_API_KEY` | Required. Pass via the host's `env` block. |
 | `EDGELENS_BASE_URL` | Optional. Override the platform API base URL (self-hosted). |
+| `EDGELENS_MCP_EXEC_ENABLED` | `1` enables `exec_command`, an unrestricted shell on the device. Off by default. |
+| `EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS` | `1` lets tools act on sessions this server did not create. Off by default. |
+| `EDGELENS_MCP_ALLOWED_UPLOAD_ROOT` | Directory `deploy_model` may read uploads from. Unset refuses every upload. |
+| `EDGELENS_MCP_REVEAL_SECRETS` | `1` writes the SSH password to a 0600 file and returns its path. Off by default (redacted). |
 
 ## Transport
 

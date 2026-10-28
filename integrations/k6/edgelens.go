@@ -10,8 +10,11 @@
 //	// Files must be opened at init scope (a k6 rule).
 //	const model = open("./models/face.cvimodel", "b");
 //
+//	// One client per VU, at init scope, so setup(), the default function
+//	// and teardown() all reach the same API with the same key.
+//	const client = edgelens.connect({ apiKey: __ENV.EDGELENS_API_KEY });
+//
 //	export function setup() {
-//	    const client = edgelens.connect({ apiKey: __ENV.EDGELENS_API_KEY });
 //	    const session = client.createSession({
 //	        deviceType: "recamera-2002",
 //	        os: "stock-os",
@@ -23,17 +26,19 @@
 //	}
 //
 //	export default function (data) {
-//	    const stats = edgelens.resume(data.sessionId).device.inference.stats();
+//	    const stats = client.resume(data.sessionId).device.inference.stats();
 //	    // Stats are emitted as the inference_fps + inference_latency_ms
 //	    // metrics — wire them into thresholds.
 //	}
 //
 //	export function teardown(data) {
-//	    edgelens.resume(data.sessionId).release();
+//	    client.resume(data.sessionId).release();
 //	}
 package edgelens
 
 import (
+	"errors"
+
 	"go.k6.io/k6/js/modules"
 )
 
@@ -69,10 +74,14 @@ func (m *Module) Exports() modules.Exports {
 	}
 }
 
-// Connect returns a new client.
+// Connect returns a new client. The key is required: a client without
+// one would send every call, release included, unauthenticated.
 //
 //	const client = edgelens.connect({ apiKey: "...", baseUrl: "..." });
-func (m *Module) Connect(opts ConnectOptions) *Client {
+func (m *Module) Connect(opts ConnectOptions) (*Client, error) {
+	if opts.APIKey == "" {
+		return nil, errors.New("edgelens.connect: apiKey is required (set EDGELENS_API_KEY)")
+	}
 	baseURL := opts.BaseURL
 	if baseURL == "" {
 		baseURL = "https://api.edgelens.ai"
@@ -81,37 +90,7 @@ func (m *Module) Connect(opts ConnectOptions) *Client {
 		apiKey:  opts.APIKey,
 		baseURL: baseURL,
 		module:  m,
-	}
-}
-
-// Resume re-attaches to an existing session by id. Used from inside a
-// VU's default function after setup() returned the id.
-//
-//	const session = edgelens.resume(data.sessionId);
-func (m *Module) Resume(sessionID string) *Session {
-	return &Session{
-		ID:     sessionID,
-		client: m.defaultClient(),
-		module: m,
-	}
-}
-
-// defaultClient reads from environment so resume() can work without a
-// JS-side client handle.
-func (m *Module) defaultClient() *Client {
-	state := m.vu.State()
-	apiKey := ""
-	baseURL := "https://api.edgelens.ai"
-	if state != nil {
-		// k6 doesn't expose process env directly here, but __ENV does.
-		// VU runtime reads __ENV at script eval time; resume callers
-		// pass the key implicitly via the connection made in setup().
-	}
-	return &Client{
-		apiKey:  apiKey,
-		baseURL: baseURL,
-		module:  m,
-	}
+	}, nil
 }
 
 // ConnectOptions is what JS passes to edgelens.connect().

@@ -15,8 +15,12 @@ export const options = {
 // open() only works at init scope; the bytes are uploaded in setup().
 const model = open("./models/face.cvimodel", "b");
 
+// One client per VU at init scope: setup(), the default function and
+// teardown() all use the same key and base URL. connect() throws if the
+// key is empty.
+const client = edgelens.connect({ apiKey: __ENV.EDGELENS_API_KEY });
+
 export function setup() {
-  const client = edgelens.connect({ apiKey: __ENV.EDGELENS_API_KEY });
   const session = client.createSession({
     deviceType: "recamera-2002",
     os: "stock-os",
@@ -28,7 +32,7 @@ export function setup() {
 }
 
 export default function (data) {
-  const stats = edgelens.resume(data.sessionId).device.inference.stats();
+  const stats = client.resume(data.sessionId).device.inference.stats();
   check(stats, {
     "fps healthy": (s) => s.fps.avg > 0,
     "latency reported": (s) => s.latency_ms.p95 > 0,
@@ -36,5 +40,5 @@ export default function (data) {
 }
 
 export function teardown(data) {
-  edgelens.resume(data.sessionId).release();
+  client.resume(data.sessionId).release();
 }

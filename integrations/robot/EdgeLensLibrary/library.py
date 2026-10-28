@@ -27,6 +27,7 @@ from typing import Any, Optional
 
 from edgelens import EdgeLensClient, Session
 from edgelens.errors import EdgeLensError
+from robot.api import logger as robot_logger
 from robot.api.deco import keyword, library
 
 from EdgeLensLibrary._version import __version__
@@ -118,7 +119,21 @@ class EdgeLensLibrary:
             )
         except ValueError as e:
             raise EdgeLensError(f"Request Device failed: {e}") from e
-        session.wait_ready(timeout=int(wait_timeout))
+        # Until self._session is set, nothing else can release this billed
+        # session. BaseException so a Ctrl-C during the silent wait still
+        # releases it.
+        try:
+            session.wait_ready(timeout=int(wait_timeout))
+        except BaseException:
+            try:
+                session.release()
+            except Exception as release_exc:  # noqa: BLE001
+                robot_logger.warn(
+                    f"Release of session {session.id} failed after Request "
+                    f"Device did not complete: {release_exc} (original error "
+                    "follows)"
+                )
+            raise
         self._session = session
         return session.id
 
@@ -189,10 +204,8 @@ class EdgeLensLibrary:
         keyword return values verbatim, so returning the password
         here would leak it to CI artifacts.
 
-        Use ``Get SSH Password`` (separate keyword) to retrieve the
-        cleartext when needed; that keyword writes at TRACE level so
-        the secret stays out of log.html unless the operator bumped
-        log level for debugging.
+        Use ``Set SSH Password Variable`` to make the password available
+        to the suite without writing it to the log.
         """
         creds = self._require_session().device.ssh()
         return {
@@ -201,24 +214,54 @@ class EdgeLensLibrary:
             "port": creds.port,
         }
 
+    @keyword("Set SSH Password Variable", tags=["secret"])
+    def set_ssh_password_variable(
+        self, name: str = "${SSH_PASSWORD}", scope: str = "TEST",
+    ) -> None:
+        """Store the SSH password in a variable without logging its value.
+
+        ``scope`` is ``TEST`` (or ``TASK``), ``SUITE`` or ``GLOBAL``.
+        Example::
+
+            Set SSH Password Variable
+            SSHLibrary.Login    ${user}    ${SSH_PASSWORD}
+
+        Robot logs keyword arguments only at TRACE level, so passing the
+        variable on keeps the value out of log.html and output.xml at the
+        default INFO level. Do not run with ``--loglevel TRACE`` or
+        ``DEBUG`` when the log is published.
+        """
+        from robot.libraries.BuiltIn import BuiltIn
+        from robot.utils import escape
+
+        setters = {
+            "TEST": "set_test_variable",
+            "TASK": "set_test_variable",
+            "SUITE": "set_suite_variable",
+            "GLOBAL": "set_global_variable",
+        }
+        setter = setters.get(scope.upper())
+        if setter is None:
+            raise ValueError(f"scope must be one of {', '.join(setters)}")
+        password = self._require_session().device.ssh().password
+        builtin = BuiltIn()
+        # BuiltIn's Set * Variable keywords log "${name} = <value>" at INFO;
+        # suppress logging while the value is set.
+        previous = builtin.set_log_level("NONE")
+        try:
+            getattr(builtin, setter)(name, escape(password))
+        finally:
+            builtin.set_log_level(previous)
+
     @keyword("Get SSH Password", tags=["secret"])
     def get_ssh_password(self) -> str:
         """Return the SSH password as a string.
 
-        This keyword is tagged
-        ``secret`` and uses ``logger.write(..., level='TRACE',
-        html=False)`` so the value does not land in log.html /
-        output.xml at default verbosity. Treat log.html as sensitive
-        when this keyword is used.
+        Robot logs the assignment ``${pw}=    Get SSH Password`` at INFO
+        level, value included, so the password lands in log.html and
+        output.xml. Use ``Set SSH Password Variable`` instead.
         """
-        from robot.api import logger as _logger
-
-        creds = self._require_session().device.ssh()
-        _logger.write(
-            "<SSH password retrieved via Get SSH Password>",
-            level="TRACE", html=False,
-        )
-        return creds.password
+        return self._require_session().device.ssh().password
 
     @keyword("Get Device Info")
     def get_device_info(self) -> dict:

@@ -82,10 +82,12 @@ hardware_tests:
   image: python:3.12-slim
   script:
     - pip install pytest-edgelens
-    - pytest tests/hardware/ \
-        --edgelens-key="$EDGELENS_API_KEY" \
-        --edgelens-os=stock-os
+    - pytest tests/hardware/ --edgelens-os=stock-os
 ```
+
+Define `EDGELENS_API_KEY` as a masked CI/CD variable; the plugin reads it
+from the environment. Do not pass it with `--edgelens-key`, which puts
+the value in the process list.
 
 Same caveats as the [GitHub Actions](./github-actions.md) "without the
 action" section.

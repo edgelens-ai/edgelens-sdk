@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -23,7 +22,7 @@ from edgelens.errors import EdgeLensError
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from edgelens_mcp.state import STATE
+from edgelens_mcp.state import STATE, external_sessions_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -40,51 +39,22 @@ _UPLOAD_ROOT: Optional[Path] = (
     Path(_UPLOAD_ROOT_RAW).resolve() if _UPLOAD_ROOT_RAW else None
 )
 
-# A small denylist so even with exec
-# opted in, the most obviously dangerous commands fail closed. Defence
-# in depth — operators should pair this with their own MCP-host policy.
-#
-# No surrounding \b anchors: several patterns end in a non-word char
-# (`rm -rf /`, the fork bomb's `{`), and a trailing \b requires a word
-# char on the boundary — so `\b(...)\b` silently failed to match exactly
-# those two headline cases. The alternatives are specific enough to
-# search unanchored.
-_EXEC_DENY = re.compile(
-    r"("
-    r"rm\s+-rf?\s+/|"
-    r":\(\)\s*\{|"  # fork bomb
-    r"mkfs|dd\s+if=|"
-    r"shutdown|reboot|halt|poweroff|"
-    r"chmod\s+-R\s+777\s+/|"
-    r"curl\s+[^|]*\|\s*(sh|bash)|"
-    r"wget\s+[^|]*\|\s*(sh|bash)"
-    r")"
-)
-
 
 def _check_exec_enabled() -> None:
     """Refuse exec_command unless the operator opted in.
 
-    Exec is arbitrary shell on the
-    customer's camera. Default-deny — operator sets
-    EDGELENS_MCP_EXEC_ENABLED=1 in the host config when they accept the
-    risk for that session.
+    The opt-in is the only gate. There is deliberately no command filter:
+    the command runs in a shell on the device, so any pattern list is
+    bypassed by quoting, paths, variables or encoding, and would only
+    give false assurance. Enabling exec gives the model an unrestricted
+    shell on the device.
     """
     if not _EXEC_ENABLED:
         raise RuntimeError(
             "exec_command is disabled. The operator must set "
             "EDGELENS_MCP_EXEC_ENABLED=1 in the MCP host env to opt in. "
-            "Arbitrary shell exec is gated "
-            "behind an explicit opt-in flag."
-        )
-
-
-def _check_command_allowed(command: str) -> None:
-    if _EXEC_DENY.search(command):
-        raise RuntimeError(
-            "Command rejected by the MCP exec denylist. "
-            "Run it directly via SSH if you mean "
-            "to."
+            "Enabling it gives the model an unrestricted shell on the "
+            "device; no command is filtered."
         )
 
 
@@ -130,6 +100,28 @@ _LIFECYCLE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorl
 # ---- session lifecycle ------------------------------------------------------
 
 
+def _wait_ready_or_release(session, timeout_s: int) -> None:
+    """Wait for ready; on any failure release the session, then re-raise.
+
+    The session is not yet in ``STATE``, so the shutdown release would
+    miss it and the billed device would stay allocated until the server
+    timeout. ``BaseException`` covers ``KeyboardInterrupt`` and
+    ``asyncio.CancelledError`` from a host that cancels the tool call.
+    """
+    try:
+        session.wait_ready(timeout=timeout_s)
+    except BaseException:
+        try:
+            session.release()
+        except Exception as release_exc:  # noqa: BLE001
+            logger.warning(
+                "release of session %s failed after wait_ready did not "
+                "complete: %s (original error follows)",
+                session.id, release_exc,
+            )
+        raise
+
+
 @mcp.tool(annotations=_LIFECYCLE)
 def create_session(
     device_type: str = "recamera-2002",
@@ -159,7 +151,7 @@ def create_session(
             device_type=device_type, os=os, timeout=timeout_s
         )
         if wait_ready:
-            session.wait_ready(timeout=wait_ready_timeout_s)
+            _wait_ready_or_release(session, wait_ready_timeout_s)
     except (EdgeLensError, ValueError) as e:
         raise RuntimeError(f"create_session failed: {e}") from e
 
@@ -239,13 +231,12 @@ def exec_command(
     on the device. Returns stdout, stderr, and exit_code. Non-zero exit codes
     are surfaced — they don't raise.
 
-    Default-deny. Operator must set
-    EDGELENS_MCP_EXEC_ENABLED=1 in the MCP host env to opt in. A small
-    denylist refuses obviously destructive commands (rm -rf /, mkfs, fork
-    bombs, piped curl/wget to sh) even when opted in.
+    Off by default. The operator must set EDGELENS_MCP_EXEC_ENABLED=1 in
+    the MCP host env to opt in. Once enabled this is an
+    unrestricted shell on the device: no command is filtered, so anything
+    the device user can do, including destructive commands, will run.
     """
     _check_exec_enabled()
-    _check_command_allowed(command)
     try:
         session = _require_ready(session_id)
         result = session.device.exec(command, timeout=timeout_s)
@@ -525,9 +516,11 @@ def run() -> None:
     vs opted-in for this process.
     """
     logger.warning(
-        "edgelens-mcp starting | exec_command=%s | upload_allowed_root=%s",
-        "ENABLED" if _EXEC_ENABLED else "disabled (default)",
+        "edgelens-mcp starting | exec_command=%s | upload_allowed_root=%s"
+        " | external_sessions=%s",
+        "ENABLED (unrestricted shell)" if _EXEC_ENABLED else "disabled (default)",
         str(_UPLOAD_ROOT) if _UPLOAD_ROOT else "disabled (default)",
+        "ALLOWED" if external_sessions_allowed() else "refused (default)",
     )
     mcp.run()
 

@@ -54,7 +54,9 @@ EDGELENS_API_KEY=el_test_xxx robot tests/
 |---|---|---|
 | `Execute On Device` | `command`, `timeout=60.0` | `{stdout, stderr, exit_code}` dict |
 | `Deploy Model` | `model`, `config=None`, `files=None` | dict |
-| `Get SSH Details` | — | `{user, host, port, password}` dict |
+| `Get SSH Details` | — | `{user, host, port}` dict |
+| `Set SSH Password Variable` | `name=${SSH_PASSWORD}`, `scope=TEST` | Sets the variable without logging the value |
+| `Get SSH Password` | — | Password string; Robot logs the assigned value at INFO, so prefer `Set SSH Password Variable` |
 | `Get Device Info` | — | full info report dict |
 | `Get Stream URL` | — | URL string (stock OS only) |
 
@@ -104,7 +106,7 @@ in and you're set:
 ### GitHub Actions
 
 ```yaml
-- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.1.1
+- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.0
   with:
     api-key: ${{ secrets.EDGELENS_API_KEY }}
     command: robot --output output.xml tests/

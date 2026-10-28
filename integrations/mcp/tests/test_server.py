@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from edgelens import EdgeLensClient
+from edgelens.errors import EdgeLensError
 from edgelens.types import OSType
 from edgelens_mcp import server, state
 
@@ -95,6 +96,65 @@ def test_create_session_invalid_os_raises_runtime_error(
         server.create_session(os="stock", wait_ready=False)
 
 
+def test_create_session_releases_when_wait_ready_fails(
+    fake_client: MagicMock, _fresh_state: state.ServerState
+):
+    fake_session = _ready_session()
+    original = TimeoutError("never became ready")
+    fake_session.wait_ready.side_effect = original
+    fake_client.create_session.return_value = fake_session
+
+    with pytest.raises(TimeoutError) as excinfo:
+        server.create_session()
+    assert excinfo.value is original
+    fake_session.release.assert_called_once_with()
+    assert _fresh_state.current_session_id is None
+
+
+def test_create_session_releases_on_sdk_error_and_keeps_it_as_cause(
+    fake_client: MagicMock,
+):
+    fake_session = _ready_session()
+    original = EdgeLensError("session errored")
+    fake_session.wait_ready.side_effect = original
+    fake_client.create_session.return_value = fake_session
+
+    with pytest.raises(RuntimeError, match="create_session failed") as excinfo:
+        server.create_session()
+    assert excinfo.value.__cause__ is original
+    fake_session.release.assert_called_once_with()
+
+
+def test_create_session_releases_on_keyboard_interrupt(
+    fake_client: MagicMock, _fresh_state: state.ServerState
+):
+    fake_session = _ready_session()
+    fake_session.wait_ready.side_effect = KeyboardInterrupt
+    fake_client.create_session.return_value = fake_session
+
+    with pytest.raises(KeyboardInterrupt):
+        server.create_session()
+    fake_session.release.assert_called_once_with()
+    assert _fresh_state.list_session_ids() == []
+
+
+def test_create_session_release_failure_does_not_mask_original(
+    fake_client: MagicMock, caplog: pytest.LogCaptureFixture
+):
+    fake_session = _ready_session()
+    original = TimeoutError("never became ready")
+    fake_session.wait_ready.side_effect = original
+    fake_session.release.side_effect = EdgeLensError("release failed")
+    fake_client.create_session.return_value = fake_session
+
+    with caplog.at_level("WARNING", logger=server.logger.name):
+        with pytest.raises(TimeoutError) as excinfo:
+            server.create_session()
+    assert excinfo.value is original
+    fake_session.release.assert_called_once_with()
+    assert "release failed" in caplog.text
+
+
 def test_create_session_tool_schema_lists_canonical_os_values():
     tool = server.mcp._tool_manager.get_tool("create_session")
     os_schema = tool.parameters["properties"]["os"]
@@ -113,15 +173,94 @@ def test_get_session_defaults_to_current(
     fake_session.refresh.assert_called_once()
 
 
-def test_get_session_unknown_id_fetches_from_client(
+def test_get_session_unknown_session_refused_by_default(
     fake_client: MagicMock, _fresh_state: state.ServerState
 ):
+    with pytest.raises(
+        RuntimeError, match="EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS=1"
+    ):
+        server.get_session(session_id="sess_other")
+    fake_client.get_session.assert_not_called()
+    assert _fresh_state.list_session_ids() == []
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda sid: server.release_session(session_id=sid),
+        lambda sid: server.wait_session_ready(session_id=sid),
+        lambda sid: server.get_device_info(session_id=sid),
+        lambda sid: server.inference_stop(session_id=sid),
+    ],
+    ids=["release", "wait_ready", "device_info", "inference_stop"],
+)
+def test_tools_unknown_session_refused(
+    fake_client: MagicMock, _fresh_state: state.ServerState, call
+):
+    with pytest.raises(RuntimeError, match="not created by this MCP server"):
+        call("sess_other")
+    fake_client.get_session.assert_not_called()
+
+
+def test_exec_command_unknown_session_refused(
+    fake_client: MagicMock, _fresh_state: state.ServerState,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(server, "_EXEC_ENABLED", True)
+    _fresh_state.remember(_ready_session("sess_mine"))
+
+    with pytest.raises(RuntimeError, match="EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS"):
+        server.exec_command(command="id", session_id="sess_other")
+    fake_client.get_session.assert_not_called()
+
+
+@pytest.mark.parametrize("value", ["0", "true", ""])
+def test_get_session_unknown_session_refused_without_exact_opt_in(
+    fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch, value: str
+):
+    monkeypatch.setenv("EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS", value)
+    with pytest.raises(RuntimeError, match="not created by this MCP server"):
+        server.get_session(session_id="sess_other")
+    fake_client.get_session.assert_not_called()
+
+
+def test_get_session_unknown_session_allowed_with_opt_in(
+    fake_client: MagicMock, _fresh_state: state.ServerState,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS", "1")
     fake_session = _ready_session("sess_new")
     fake_client.get_session.return_value = fake_session
 
     result = server.get_session(session_id="sess_new")
     assert result["id"] == "sess_new"
     fake_client.get_session.assert_called_once_with("sess_new")
+
+
+def test_release_session_unknown_session_allowed_with_opt_in(
+    fake_client: MagicMock, _fresh_state: state.ServerState,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS", "1")
+    fake_session = _ready_session("sess_ext")
+    fake_client.get_session.return_value = fake_session
+
+    result = server.release_session(session_id="sess_ext")
+    assert result == {"id": "sess_ext", "status": "released"}
+    fake_session.release.assert_called_once()
+    assert "sess_ext" not in _fresh_state.list_session_ids()
+
+
+def test_created_session_resolves_without_opt_in(
+    fake_client: MagicMock, _fresh_state: state.ServerState
+):
+    fake_session = _ready_session("sess_created")
+    fake_client.create_session.return_value = fake_session
+    server.create_session(wait_ready=False)
+
+    result = server.get_session(session_id="sess_created")
+    assert result["id"] == "sess_created"
+    fake_client.get_session.assert_not_called()
 
 
 def test_get_session_no_current_raises(fake_client: MagicMock):
