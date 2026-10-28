@@ -1,0 +1,9 @@
+include:
+  - remote: "https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/main/ci/gitlab/edgelens.gitlab-ci.yml"
+
+stages:
+  - test
+
+edgelens-tests:
+  stage: test
+  extends: .edgelens:pytest

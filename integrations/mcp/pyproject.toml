@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "edgelens-mcp"
+dynamic = ["version"]
+description = "MCP server exposing the EdgeLens SDK as LLM tools."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "EdgeLens", email = "support@edgelens.ai" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "edgelens-sdk>=0.1.0,<0.2",
+    # <2: mcp 2.x renamed FastMCP -> MCPServer, breaking our import path.
+    "mcp[cli]>=1.2,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.1",
+]
+
+[project.scripts]
+edgelens-mcp = "edgelens_mcp.server:run"
+
+[project.urls]
+Homepage = "https://edgelens.ai"
+Repository = "https://github.com/edgelens-ai/edgelens-sdk"
+Issues = "https://github.com/edgelens-ai/edgelens-sdk/issues"
+
+[tool.hatch.build.targets.sdist]
+include = ["/edgelens_mcp", "/README.md", "/LICENSE"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["edgelens_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.hatch.version]
+path = "edgelens_mcp/__init__.py"

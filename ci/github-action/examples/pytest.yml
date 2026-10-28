@@ -1,0 +1,15 @@
+name: EdgeLens tests (pytest)
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.1.0
+        with:
+          api-key: ${{ secrets.EDGELENS_API_KEY }}
+          command: pytest --junit-xml=junit.xml

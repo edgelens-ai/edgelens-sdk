@@ -1,0 +1,26 @@
+# Matrix: two OS targets x two suites. Each job runs the test command
+# with EDGELENS_OS set so the SDK / fixtures can pick the right
+# preset.
+
+include:
+  - remote: "https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/main/ci/gitlab/edgelens.gitlab-ci.yml"
+
+stages:
+  - test
+
+edgelens-matrix:
+  stage: test
+  extends: .edgelens:base
+  parallel:
+    matrix:
+      - OS_TARGET: ["stock", "recamagined"]
+        SUITE: ["smoke", "full"]
+  variables:
+    EDGELENS_OS: "$OS_TARGET"
+  script:
+    - |
+      case "$SUITE" in
+        smoke) pytest -m smoke --junit-xml=$JUNIT_FILE ;;
+        full)  pytest --junit-xml=$JUNIT_FILE ;;
+        *) echo "unknown suite: $SUITE" >&2; exit 1 ;;
+      esac

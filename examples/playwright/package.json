@@ -1,0 +1,16 @@
+{
+  "name": "edgelens-playwright-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@edgelens/core": "^0.1.0",
+    "@edgelens/playwright-plugin": "^0.1.0",
+    "typescript": "^5.4.0"
+  }
+}

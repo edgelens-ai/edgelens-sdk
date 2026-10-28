@@ -1,0 +1,15 @@
+# Self-hosted EdgeLens: point at your platform deployment via
+# EDGELENS_BASE_URL. Set it as a (non-masked) CI/CD variable at the
+# project / group level, or inline like below.
+
+include:
+  - remote: "https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/main/ci/gitlab/edgelens.gitlab-ci.yml"
+
+stages:
+  - test
+
+edgelens-tests:
+  stage: test
+  extends: .edgelens:pytest
+  variables:
+    EDGELENS_BASE_URL: "https://edgelens.internal.acme.com"

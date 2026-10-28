@@ -1,0 +1,19 @@
+# Bayesian sweep over the detector's confidence threshold + NMS IoU,
+# maximizing the average fps measured on a real reCamera.
+#
+# Usage:
+#     wandb sweep sweep.yaml
+#     wandb agent <SWEEP_ID> --count 20
+
+program: bench_sweep.py
+method: bayes
+metric:
+  name: fps/avg
+  goal: maximize
+parameters:
+  confidence_threshold:
+    min: 0.3
+    max: 0.9
+  nms_iou:
+    min: 0.3
+    max: 0.7

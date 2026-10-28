@@ -1,0 +1,3 @@
+pytest-edgelens>=0.1
+pytest>=7.0
+segno>=1.6

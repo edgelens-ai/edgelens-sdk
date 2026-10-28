@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pytest-edgelens"
+dynamic = ["version"]
+description = "pytest plugin for EdgeLens — per-session/per-test camera fixtures, CLI options, JUnit metadata."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "EdgeLens", email = "support@edgelens.ai" }]
+requires-python = ">=3.9"
+classifiers = [
+    "Framework :: Pytest",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "edgelens-sdk>=0.1.0,<0.2",
+    "pytest>=7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1",
+    "mypy>=1.0",
+]
+
+[project.entry-points.pytest11]
+pytest_edgelens = "pytest_edgelens.plugin"
+
+[project.urls]
+Homepage = "https://edgelens.ai"
+Repository = "https://github.com/edgelens-ai/edgelens-sdk"
+Issues = "https://github.com/edgelens-ai/edgelens-sdk/issues"
+
+[tool.hatch.build.targets.sdist]
+include = ["/pytest_edgelens", "/README.md", "/LICENSE"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pytest_edgelens"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.mypy]
+strict = true
+python_version = "3.9"
+
+[tool.hatch.version]
+path = "pytest_edgelens/__init__.py"

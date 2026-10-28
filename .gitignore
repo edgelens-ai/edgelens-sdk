@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Node / TypeScript
+node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+.parcel-cache
+.next
+out/
+.cache/
+*.tsbuildinfo
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.dylib
+*.test
+*.out
+go.work
+vendor/
+# `*.test` above is Go's compiled per-package test binary (go test -c). The
+# container test images are named Dockerfile.test / Dockerfile.test-typescript,
+# so negate those back in.
+!Dockerfile.test
+!Dockerfile.test-*
+
+# k6 — built xk6 binary lives at repo root after `xk6 build`. The
+# anchored slashes scope the ignore so examples/k6/ + integrations/k6/
+# aren't swallowed.
+/xk6
+/k6
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Demo run output. These are photographs taken by a device in a rack, so
+# they show whatever the sensor was pointed at — never commit them here.
+examples/*/artifacts/

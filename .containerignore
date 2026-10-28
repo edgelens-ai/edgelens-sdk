@@ -1,0 +1,18 @@
+# Build context for `make test` / `make test-rebuild`. Neither Dockerfile.test
+# nor Dockerfile.test-typescript COPYs these in, but excluding them keeps the
+# context small enough that a rebuild stays fast on a cold cache.
+#
+# node_modules and .venv recreate from package-lock.json / requirements.test.txt
+# so there is no reason to ship them to the daemon. .pytest_cache / .ruff_cache
+# are per-run tooling state.
+
+**/node_modules/
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/dist/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/

@@ -1,0 +1,63 @@
+# The image `make test` (typescript half) runs core/typescript/tests in.
+#
+# WHY A SEPARATE FILE AND A SEPARATE IMAGE.
+#
+# One image mixing Python and Node is a bigger image for every target, and
+# couples the two language toolchains' version bumps into one rebuild. The
+# Python side (Dockerfile.test) is the primary gate; this one is small on
+# purpose. See the Dockerfile.test header for the reason both files sit at
+# this layer rather than as stages in a shipped Dockerfile.
+#
+# WHY node_modules IS BAKED, NOT MOUNTED.
+#
+# The sibling Python image can bind-mount its live tree because an editable
+# pip install writes .pth entries that resolve through the mount at run
+# time. Node has no such indirection: vitest resolves imports by scanning
+# node_modules relative to the test file, and a read-only bind-mount of the
+# repo over the baked image would hide the installed modules behind the
+# host's (empty) node_modules. The alternative -- a volume that smuggles
+# node_modules back in -- is more moving parts to achieve nothing: the
+# TypeScript tree is small (src/ + tests/), the suite is small, and a
+# `make test-rebuild` is cheap. Code edits on the typescript side therefore
+# want `make test-rebuild`; this is documented in the Makefile.
+
+FROM docker.io/library/node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
+
+# `npm ci` (not `npm install`) installs strictly from package-lock.json
+# without re-resolving. This is the whole reason the lockfile is committed:
+# a fresh install resolves ranges from scratch and would make the suite's
+# result a function of the date rather than of the commit. `npm ci` fails
+# loudly if package.json and the lockfile disagree, which is the right
+# direction -- a lockfile the sources no longer match is a lockfile that
+# has stopped protecting the pin.
+#
+# --chown=node:node on every COPY and the chown on WORKDIR itself: the base
+# image's default USER is `node` (uid 1000), but a `WORKDIR` the image
+# creates implicitly is owned by root. vite -- which vitest hands the
+# `vitest.config.ts` to -- compiles the config to a sibling
+# `vitest.config.ts.timestamp-<nanos>.mjs` and refuses to proceed if it
+# cannot (measured: `EACCES: permission denied, open ... .timestamp-...mjs`).
+# Everything the suite needs to WRITE lives under /ts, so owning the tree
+# with the running user is the straight fix. --network none at test time
+# makes the write-to-the-tree surface small on purpose: there is no shared
+# node_modules cache, no --prefix outside /ts, and the whole suite is in
+# this one directory.
+WORKDIR /ts
+RUN chown node:node /ts
+USER node
+
+COPY --chown=node:node core/typescript/package.json /ts/package.json
+COPY --chown=node:node core/typescript/package-lock.json /ts/package-lock.json
+RUN npm ci --no-audit --no-fund
+
+# The test sources themselves. node_modules stays in /ts (above) and the
+# config files are read where they are copied; vitest.config.ts points at
+# `tests/**/*.test.ts`.
+COPY --chown=node:node core/typescript/src /ts/src
+COPY --chown=node:node core/typescript/tests /ts/tests
+COPY --chown=node:node core/typescript/vitest.config.ts /ts/vitest.config.ts
+COPY --chown=node:node core/typescript/tsconfig.json /ts/tsconfig.json
+
+# No ENTRYPOINT. The Makefile picks the command; the image has `vitest`
+# installed under /ts/node_modules/.bin and `npm test` runs it.
+CMD ["npm", "test"]

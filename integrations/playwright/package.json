@@ -1,0 +1,58 @@
+{
+  "name": "@edgelens/playwright-plugin",
+  "version": "0.1.0",
+  "description": "Playwright integration for EdgeLens — per-test camera sessions, auto-release, project presets.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@edgelens/core": "^0.1.0",
+    "@playwright/test": ">=1.50.0"
+  },
+  "devDependencies": {
+    "@edgelens/core": "file:../../core/typescript",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^20.19.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["edgelens", "playwright", "playwright-plugin", "edge-ai", "testing", "device-farm"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edgelens-ai/edgelens-sdk.git",
+    "directory": "integrations/playwright"
+  },
+  "homepage": "https://edgelens.ai",
+  "bugs": {
+    "url": "https://github.com/edgelens-ai/edgelens-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

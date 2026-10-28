@@ -1,0 +1,69 @@
+# The image `make test` (python half) runs this repo's offline suite in.
+#
+# WHY A SEPARATE FILE rather than a stage in a shipped Dockerfile.
+#
+# The SDK components publish wheels and the TypeScript package publishes a
+# tarball; a test image appended as a stage would become the default build
+# target, so a future `make push` -- which would build with no --target --
+# would start publishing the test tooling. Keeping the test image in its own
+# file means the published artefacts cannot acquire pytest, hatchling, or
+# `tests/` as a side effect of this target existing.
+#
+# WHY NOTHING COMMITS INTO THE IMAGE AT A STABLE PATH.
+#
+# The sources COPY'd below are a bootstrap for `pip install -e`: hatchling
+# needs them to read each component's pyproject.toml and compute the editable
+# install's .pth entry. At test time the Makefile bind-mounts the real repo
+# read-only at /sdk, so the editable entries resolve to the live tree and a
+# file:line in pytest output is a path you can open directly. Editing a test
+# or a package source therefore needs no rebuild.
+#
+# PYTHON ONLY. The TypeScript half ships in Dockerfile.test-typescript: one
+# language's dependency manager has no business in another's image.
+
+FROM docker.io/library/python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+
+# WHY --no-deps.
+#
+# requirements.test.txt is a complete `pip freeze` of the resolve we tested
+# against -- transitive dependencies included -- so pip installs exactly
+# these versions and resolves nothing. No transitive package can drift in
+# behind the pin, which is the whole point of having one.
+#
+# A direct dependency added to any component's pyproject.toml but not here
+# surfaces as an ImportError at pytest collection, which fails the gate
+# loudly rather than passing a smaller suite quietly.
+COPY requirements.test.txt /tmp/requirements.test.txt
+RUN pip install --no-cache-dir --no-deps -r /tmp/requirements.test.txt \
+ && rm /tmp/requirements.test.txt
+
+# COPY the five Python components into /sdk/<path> so pip install -e can read
+# their pyproject.toml. At runtime the Makefile bind-mounts the real repo
+# over /sdk, replacing these files -- the .pth entries pip wrote still point
+# into /sdk and resolve through the mount.
+COPY core/python /sdk/core/python
+COPY integrations/cli /sdk/integrations/cli
+COPY integrations/mcp /sdk/integrations/mcp
+COPY integrations/pytest /sdk/integrations/pytest
+COPY integrations/robot /sdk/integrations/robot
+
+# --no-build-isolation keeps the --no-deps pin honest: pip would otherwise
+# create an isolated venv per editable install and fetch hatchling fresh over
+# the network. hatchling (and its `editables` runtime dependency for PEP 660
+# support) are on the pinned list for this reason.
+# --no-deps repeats the same discipline for the editable install itself.
+RUN pip install --no-cache-dir --no-build-isolation --no-deps \
+      -e /sdk/core/python \
+      -e /sdk/integrations/cli \
+      -e /sdk/integrations/mcp \
+      -e /sdk/integrations/pytest \
+      -e /sdk/integrations/robot
+
+# The repo mount is read-only and a shared checkout is not somewhere to
+# leave __pycache__ behind. `-p no:cacheprovider` on the pytest line in the
+# Makefile covers .pytest_cache for the same reason.
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# No ENTRYPOINT. The Makefile picks the test paths; running the image bare
+# would need pytest to be told where tests/ live, which varies per target.
+CMD ["python3", "-m", "pytest", "--help"]

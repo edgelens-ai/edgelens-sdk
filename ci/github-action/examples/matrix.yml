@@ -1,0 +1,19 @@
+name: EdgeLens tests (matrix)
+on: [pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - { name: smoke, command: "pytest -m smoke --junit-xml=junit.xml" }
+          - { name: full,  command: "pytest --junit-xml=junit.xml" }
+    name: ${{ matrix.suite.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.1.0
+        with:
+          api-key: ${{ secrets.EDGELENS_API_KEY }}
+          command: ${{ matrix.suite.command }}

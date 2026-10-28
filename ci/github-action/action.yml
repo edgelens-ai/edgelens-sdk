@@ -1,0 +1,218 @@
+name: "EdgeLens Tests"
+description: "Run your EdgeLens test command in the pre-built CI image with auto artifact upload and PR comments."
+author: "EdgeLens"
+branding:
+  icon: "camera"
+  color: "blue"
+
+inputs:
+  api-key:
+    description: "EdgeLens API key. Pass via a secret: ${{ secrets.EDGELENS_API_KEY }}."
+    required: true
+  command:
+    description: "Test command to run inside the container."
+    required: false
+    default: "pytest"
+  image:
+    description: |
+      Docker image to run the test command in.
+      The default is the image released with this version of the action.
+      DO NOT use `edgelensai/edgelens-sdk:latest` in production pipelines — a
+      registry compromise would land in every CI run immediately on
+      the next pull. Pin a version + digest in your own caller:
+        image: edgelensai/edgelens-sdk:0.1.0@sha256:<digest>
+    required: false
+    default: "edgelensai/edgelens-sdk:0.1.0"
+  working-directory:
+    description: "Repo-relative directory to run the command from."
+    required: false
+    default: "."
+  artifacts-path:
+    description: "Comma-separated globs of test artifacts to upload. Empty disables upload."
+    required: false
+    default: "test-results,playwright-report,coverage,junit.xml"
+  artifacts-retention-days:
+    description: "Days to retain uploaded artifacts."
+    required: false
+    default: "14"
+  junit-file:
+    description: "Path to a JUnit XML file used to compute the summary. Optional; falls back to exit code."
+    required: false
+    default: "junit.xml"
+  comment-on-pr:
+    description: "Post a summary comment on the PR. No-op outside pull_request events."
+    required: false
+    default: "true"
+  base-url:
+    description: "Override the EdgeLens platform API base URL (self-hosted deployments)."
+    required: false
+    default: ""
+  extra-env:
+    description: "Multiline KEY=value pairs to inject into the container env."
+    required: false
+    default: ""
+
+outputs:
+  passed:
+    description: "true if the test command exited 0, false otherwise."
+    value: ${{ steps.run.outputs.passed }}
+  summary:
+    description: "Short markdown summary of the run (also written to GITHUB_STEP_SUMMARY)."
+    value: ${{ steps.summarize.outputs.summary }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs
+      shell: bash
+      # Never let GitHub template-expand an input directly into the shell
+      # script. Route every user-controlled value through the env
+      # block and reference "$VAR" instead.
+      env:
+        IN_API_KEY: ${{ inputs.api-key }}
+        IN_COMMAND: ${{ inputs.command }}
+        IN_IMAGE: ${{ inputs.image }}
+      run: |
+        if [ -z "$IN_API_KEY" ]; then
+          echo "::error::api-key is empty"
+          exit 1
+        fi
+        if [ -z "$IN_COMMAND" ]; then
+          echo "::error::command is empty"
+          exit 1
+        fi
+        # Mask the API key in any subsequent step that accidentally echoes it.
+        echo "::add-mask::$IN_API_KEY"
+        echo "image=$IN_IMAGE"
+        # Do NOT echo the command; treat it as untrusted.
+
+    - name: Pull image
+      shell: bash
+      env:
+        IN_IMAGE: ${{ inputs.image }}
+      run: docker pull "$IN_IMAGE"
+
+    - name: Run tests
+      id: run
+      shell: bash
+      # EDGELENS_API_KEY is set on the
+      # docker-run env passthrough only, not on the outer shell context
+      # where ${{ inputs.command }} is expanded. With the env-indirection
+      # below the secret + the user-controlled command never share a shell.
+      env:
+        IN_API_KEY: ${{ inputs.api-key }}
+        IN_COMMAND: ${{ inputs.command }}
+        IN_IMAGE: ${{ inputs.image }}
+        IN_BASE_URL: ${{ inputs.base-url }}
+        IN_EXTRA_ENV: ${{ inputs.extra-env }}
+        IN_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      run: |
+        set +e
+        echo "::add-mask::$IN_API_KEY"
+        env_args=(-e CI=true -e "EDGELENS_API_KEY=$IN_API_KEY")
+        if [ -n "$IN_BASE_URL" ]; then
+          env_args+=(-e "EDGELENS_BASE_URL=$IN_BASE_URL")
+        fi
+        # Pipe extra-env one line at a time so values can contain spaces.
+        while IFS= read -r line; do
+          [ -z "$line" ] && continue
+          env_args+=(-e "$line")
+        done <<< "$IN_EXTRA_ENV"
+
+        docker run --rm \
+          "${env_args[@]}" \
+          -v "${{ github.workspace }}:/workspace" \
+          -w "/workspace/$IN_WORKING_DIRECTORY" \
+          "$IN_IMAGE" \
+          bash -lc "$IN_COMMAND"
+        rc=$?
+        echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+        if [ $rc -eq 0 ]; then
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+        fi
+        exit $rc
+      continue-on-error: true
+
+    - name: Summarize
+      id: summarize
+      shell: bash
+      env:
+        JUNIT_FILE: ${{ inputs.working-directory }}/${{ inputs.junit-file }}
+        EXIT_CODE: ${{ steps.run.outputs.exit_code }}
+        PASSED: ${{ steps.run.outputs.passed }}
+      run: |
+        summary_path="$(mktemp)"
+        if [ -f "$JUNIT_FILE" ]; then
+          # Pull totals out of any JUnit-format report (handles both
+          # <testsuites> and lone <testsuite> roots, sums across suites).
+          read total failures errors skipped < <(
+            python3 "${{ github.action_path }}/scripts/parse-junit.py" "$JUNIT_FILE"
+          )
+          passed_count=$(( total - failures - errors - skipped ))
+          icon="✅"
+          [ "$PASSED" = "false" ] && icon="❌"
+          {
+            echo "## $icon EdgeLens tests"
+            echo
+            echo "| Total | Passed | Failed | Errors | Skipped |"
+            echo "|------:|-------:|-------:|-------:|--------:|"
+            echo "| $total | $passed_count | $failures | $errors | $skipped |"
+            echo
+            echo "Exit code: \`$EXIT_CODE\`."
+          } > "$summary_path"
+        else
+          icon="✅"
+          status="passed"
+          [ "$PASSED" = "false" ] && { icon="❌"; status="failed"; }
+          {
+            echo "## $icon EdgeLens tests"
+            echo
+            echo "Command $status (exit \`$EXIT_CODE\`). No JUnit file at \`$JUNIT_FILE\`."
+          } > "$summary_path"
+        fi
+
+        cat "$summary_path" >> "$GITHUB_STEP_SUMMARY"
+        {
+          echo 'summary<<__EOF__'
+          cat "$summary_path"
+          echo '__EOF__'
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Upload artifacts
+      if: always() && inputs.artifacts-path != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: edgelens-test-results-${{ github.run_attempt }}
+        retention-days: ${{ inputs.artifacts-retention-days }}
+        if-no-files-found: ignore
+        path: |
+          ${{ inputs.working-directory }}/test-results
+          ${{ inputs.working-directory }}/playwright-report
+          ${{ inputs.working-directory }}/coverage
+          ${{ inputs.working-directory }}/junit.xml
+
+    - name: Comment on PR
+      if: |
+        always()
+        && inputs.comment-on-pr == 'true'
+        && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const body = `${{ steps.summarize.outputs.summary }}`;
+          if (!body || !body.trim()) return;
+          await github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body,
+          });
+
+    - name: Fail if tests failed
+      if: steps.run.outputs.passed == 'false'
+      shell: bash
+      run: |
+        echo "::error::EdgeLens tests failed (exit ${{ steps.run.outputs.exit_code }})"
+        exit ${{ steps.run.outputs.exit_code }}

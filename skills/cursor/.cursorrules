@@ -1,0 +1,80 @@
+# EdgeLens — Cursor IDE rules
+#
+# Drop this file at the project root as `.cursorrules`. Cursor will
+# load it as instructions for every completion in the workspace.
+
+You write tests against the EdgeLens Edge AI Device Farm — a service
+that hands out real edge-AI cameras (Seeed reCamera, RISC-V + Sophgo
+NPU) over the network. EdgeLens is framework-native — use the test
+runner the project already uses (pytest, Playwright, k6, Robot); do
+not invent an EdgeLens-specific runner.
+
+# SDK surface
+
+Python:
+    from edgelens import EdgeLensClient
+    client = EdgeLensClient()  # reads $EDGELENS_API_KEY
+
+    with client.create_session(device_type="recamera-2002", os="stock-os") as session:
+        session.wait_ready()
+        device = session.device
+        device.deploy(model="./face.cvimodel")
+        stats = device.inference.run(duration=30)
+        assert stats.fps.avg >= 15
+        assert stats.latency_ms.p95 < 100
+
+Async: `from edgelens.aio import AsyncEdgeLensClient` mirrors the sync
+shape and is the right choice in pytest-asyncio / Node-driven tests.
+
+pytest (with `pytest-edgelens` installed): the `device` fixture handles
+allocate + wait_ready + release. Prefer it.
+
+    def test_face_latency(device):
+        device.deploy(model="./models/face.cvimodel")
+        stats = device.inference.run(duration=30)
+        assert stats.fps.avg >= 15
+
+# OS tiers
+
+- `"stock-os"` — reCamera firmware. Has `device.inference.*`, `device.display.*`, web UI, camera stream. Use when EdgeLens runs inference for you.
+- `"recamagined"` — SSH-only raw OS. No built-in inference / display HTTP. Use when you ship your own binary via `device.deploy(model=..., files=[...])` + `device.exec()`. Deployed files land in `/userdata/Models/` and aren't executable; `chmod +x` first.
+
+The SDK enum `OSType.STOCK` has value `"stock-os"` — never write
+`"stock"`, that string has never worked against a live API.
+
+# Patterns to use
+
+- Always wrap session creation in a `with` block — release is on-exit.
+- `session.wait_ready()` before touching `session.device`.
+- Catch only `edgelens.errors.*` (EdgeLensError, SessionError, AuthenticationError, DeviceError, TimeoutError) — never bare `Exception`.
+- One assertion per acceptance criterion; don't bundle.
+- For self-hosted EdgeLens, pass `base_url=` to the client.
+
+# Anti-patterns — do not generate
+
+- `os="stock"` (defunct; use `"stock-os"`)
+- `time.sleep(N)` to poll for ready (use `session.wait_ready()`)
+- Hard-coded device hosts (`10.0.1.42`); always go through `session.device`
+- Manual `session.release()` inside a `with` block (the CM does it)
+- Mocking `EdgeLensClient` or `Device` in tests meant to hit real hardware — that defeats the point of EdgeLens. Mock at the model boundary instead.
+- Catching `EdgeLensError` to "make the test pass" — surface the failure.
+
+# When the user asks for a test
+
+Identify (1) framework, (2) OS tier, (3) the actual acceptance
+criterion ("fps >= 15 on the crowd_scene clip", not "make sure
+inference works"). Write the thinnest test that checks the criterion.
+Don't stack deploy + display + inference in one test unless that
+combination is what's being checked.
+
+# When the user hits an error
+
+- `AuthenticationError` → `$EDGELENS_API_KEY` unset / malformed / revoked.
+- `SessionError` on `wait_ready` → device flash failed; `session.error` carries the reason.
+- `TimeoutError` on `wait_ready` → flash > 300s default; bump via `wait_ready(timeout=600)`.
+- HTTP 429 on create → `max_concurrent_sessions` full; release prior or upgrade plan.
+- HTTP 410 on `device.*` → session already released; start fresh.
+- HTTP 400 with `private` in detail → SSRF block; URL DNS-resolves to a private IP. Use a public URL.
+- HTTP 422 with `extra fields not permitted` → unknown key in request body. Drop it.
+
+Always preserve the full error chain. Do not `try/except: pass`.

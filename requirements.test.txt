@@ -1,0 +1,89 @@
+# Pinned dependency set for the `make test` image (Dockerfile.test).
+#
+# WHY PINNED, and not pyproject.toml's ranges.
+#
+# Each component's pyproject.toml declares open-ended ranges (httpx>=0.27,
+# pydantic>=2.0, pytest>=7.0, mcp[cli]>=1.2,<2, robotframework>=6.0). A test
+# image built straight from those resolves to whatever is newest on the build
+# day, which makes the suite's result a function of the date rather than of
+# the commit. Pinning makes `make test` reproducible: the same commit gives
+# the same answer next month. The pyproject.toml files stay the single source
+# of truth for WHICH packages the suite needs; this file records WHICH VERSION
+# of each, the way a lockfile does.
+#
+# WHAT PINNING IS NOT FOR.
+#
+# A version that breaks the suite does NOT belong below. Pin the versions the
+# suite passes on; if raising one breaks a test, fix the test rather than the
+# pin -- a lockfile that preserves a broken version is a lockfile that stops
+# the suite from telling you about the next drift.
+#
+# Installed with --no-deps and --no-build-isolation (see Dockerfile.test), so
+# this list is complete by construction: it is the `pip freeze` of the resolve
+# that produced the published image. hatchling is in the list because the
+# editable install of each SDK component needs it as a PEP 517 build backend
+# at image-build time, and build isolation is off so no network fetch happens
+# behind the pin.
+#
+# REGENERATE deliberately, never casually:
+#   1. Build a resolver image that installs the direct dependencies from each
+#      component's pyproject.toml with their declared ranges:
+#        FROM docker.io/library/python:3.12-slim@<digest>
+#        RUN pip install --no-cache-dir hatchling editables \
+#              "httpx>=0.27" "pydantic>=2.0" "click>=8.1" \
+#              "mcp[cli]>=1.2,<2" "robotframework>=6.0" \
+#              "pytest>=7.0" "pytest-httpx>=0.30" "pytest-asyncio>=0.23" \
+#          && pip freeze > /pinned.txt
+#   2. `podman run --rm resolver:tmp cat /pinned.txt | sort` -- that is this
+#      file's body.
+#   3. `make -C edgelens-sdk test-rebuild` -- confirm the suite still passes
+#      end to end, python and typescript, before committing the new pins.
+
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+attrs==26.1.0
+certifi==2026.10.18
+cffi==2.1.1
+click==8.5.0
+cryptography==50.0.2
+editables==0.6
+h11==0.16.0
+hatchling==1.32.4
+httpcore==1.0.9
+httpx==0.28.1
+httpx-sse==0.4.3
+idna==3.20
+iniconfig==2.3.1
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+markdown-it-py==4.2.0
+mcp==1.30.0
+mdurl==0.1.2
+packaging==26.3
+pathspec==1.1.1
+pluggy==1.7.0
+pycparser==3.11
+pydantic==2.14.1
+pydantic_core==2.50.1
+pydantic-settings==2.16.0
+Pygments==2.21.0
+PyJWT==2.15.1
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-httpx==0.36.2
+python-dotenv==1.2.4
+python-multipart==0.0.32
+referencing==0.37.0
+rich==15.0.0
+robotframework==7.5
+rpds-py==2026.9.1
+shellingham==1.5.4
+sse-starlette==3.5.0
+starlette==1.9.0
+tomlkit==0.15.2
+trove-classifiers==2026.9.21.13
+typer==0.27.3
+typing_extensions==4.16.0
+typing-inspection==0.4.4
+uvicorn==0.54.0

@@ -1,0 +1,101 @@
+# EdgeLens GitLab CI template
+#
+# Include in your project's .gitlab-ci.yml via:
+#
+#   include:
+#     - remote: "https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/main/ci/gitlab/edgelens.gitlab-ci.yml"
+#
+# Or, if your team mirrors this file into a shared repo:
+#
+#   include:
+#     - project: "shared/ci"
+#       file: "edgelens.gitlab-ci.yml"
+#       ref: main
+#
+# Then either:
+#
+# 1. Use a preset job directly:
+#
+#      edgelens-tests:
+#        extends: .edgelens:pytest
+#
+# 2. Or build on `.edgelens:base` and supply your own command:
+#
+#      my-job:
+#        extends: .edgelens:base
+#        script:
+#          - edgelens session list  # whatever you want
+#
+# Required variable (set as a masked + protected CI/CD variable):
+#   EDGELENS_API_KEY
+#
+# Optional:
+#   EDGELENS_BASE_URL  — self-hosted EdgeLens deployments
+#   EDGELENS_IMAGE     — image tag override (default: edgelensai/edgelens-sdk:latest)
+
+# ---- base ------------------------------------------------------------------
+#
+# Every other template extends this. Pulls the edgelensai/edgelens-sdk image, threads
+# the API key + base URL through, surfaces a JUnit report to the GitLab
+# UI, and uploads test-results / playwright-report / coverage as
+# artifacts (regardless of pass/fail).
+
+.edgelens:base:
+  image: $EDGELENS_IMAGE
+  variables:
+    EDGELENS_IMAGE: "edgelensai/edgelens-sdk:latest"
+    JUNIT_FILE: "junit.xml"
+    # Pip / npm caches off the runner volume so retries are fast.
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+    npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
+  cache:
+    key: "edgelens-$CI_COMMIT_REF_SLUG"
+    paths:
+      - .cache/pip
+      - .cache/npm
+  artifacts:
+    name: "edgelens-$CI_JOB_NAME-$CI_JOB_ID"
+    when: always
+    expire_in: 14 days
+    paths:
+      - test-results
+      - playwright-report
+      - coverage
+      - "$JUNIT_FILE"
+    reports:
+      junit: "$JUNIT_FILE"
+  before_script:
+    - |
+      if [ -z "${EDGELENS_API_KEY:-}" ]; then
+        echo "EDGELENS_API_KEY is not set — define it as a masked + protected CI/CD variable." >&2
+        exit 1
+      fi
+    - edgelens --version
+  # Customer overrides this.
+  script:
+    - echo "Override 'script:' in your job — see comments at the top of edgelens.gitlab-ci.yml"
+    - exit 1
+
+# ---- presets ---------------------------------------------------------------
+
+.edgelens:pytest:
+  extends: .edgelens:base
+  script:
+    - pytest --junit-xml=$JUNIT_FILE
+
+.edgelens:playwright:
+  extends: .edgelens:base
+  variables:
+    # Playwright's JUnit reporter wants a single path. results.xml is its
+    # convention; users can override JUNIT_FILE on the job.
+    JUNIT_FILE: "results.xml"
+    PLAYWRIGHT_JUNIT_OUTPUT_NAME: "results.xml"
+  script:
+    - npx playwright test --reporter=junit --output=test-results
+
+.edgelens:robot:
+  extends: .edgelens:base
+  variables:
+    JUNIT_FILE: "output.xml"
+  script:
+    - robot --output $JUNIT_FILE tests/

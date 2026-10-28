@@ -1,0 +1,29 @@
+# Build context is the edgelens-sdk root — shrink it to what the
+# Dockerfile actually COPYs across.
+
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/coverage
+**/.next
+**/package-lock.json.bak
+**/*.tsbuildinfo
+**/.DS_Store
+**/.env
+**/.env.*
+
+# Repo bits unrelated to the image.
+.git
+docs
+examples
+skills
+ci/github-action
+ci/gitlab
+core/go
+integrations/k6
+integrations/robot
+integrations/pytest
