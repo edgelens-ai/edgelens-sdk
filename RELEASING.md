@@ -37,7 +37,7 @@ together, at the same number.
   public repository is released. A release tag is immutable: it is never
   moved or re-pointed, and there is no moving major-version tag. Users pin
   the action by its exact tag:
-  `uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.1`.
+  `uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2`.
 - **Image tags** carry no `v`: `edgelensai/edgelens-sdk:<version>`,
   `:<major>.<minor>` and `:latest`, for example `:0.1.0`, `:0.1` and
   `:latest`. A released `<version>` tag is never pushed again.

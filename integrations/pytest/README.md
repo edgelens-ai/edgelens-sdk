@@ -118,7 +118,7 @@ strategy:
     os: [stock, recamagined]
 steps:
   - uses: actions/checkout@v4
-  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.1
+  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
     with:
       api-key: ${{ secrets.EDGELENS_API_KEY }}
       command: pytest --edgelens-os=${{ matrix.os }} --junit-xml=junit.xml

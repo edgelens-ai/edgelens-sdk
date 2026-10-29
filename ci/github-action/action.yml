@@ -20,9 +20,9 @@ inputs:
       DO NOT use `edgelensai/edgelens-sdk:latest` in production pipelines — a
       registry compromise would land in every CI run immediately on
       the next pull. Pin a version + digest in your own caller:
-        image: edgelensai/edgelens-sdk:0.2.1@sha256:<digest>
+        image: edgelensai/edgelens-sdk:0.2.2@sha256:<digest>
     required: false
-    default: "edgelensai/edgelens-sdk:0.2.1"
+    default: "edgelensai/edgelens-sdk:0.2.2"
   working-directory:
     description: "Repo-relative directory to run the command from."
     required: false

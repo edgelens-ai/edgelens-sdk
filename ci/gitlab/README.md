@@ -50,7 +50,7 @@ Override on the job:
 edgelens-tests:
   extends: .edgelens:pytest
   variables:
-    EDGELENS_IMAGE: "edgelensai/edgelens-sdk:0.2.1"   # pin
+    EDGELENS_IMAGE: "edgelensai/edgelens-sdk:0.2.2"   # pin
     JUNIT_FILE: "my-report.xml"
 ```
 
@@ -111,7 +111,7 @@ runner's executor config — e.g. for Docker executor:
 
 ```toml
 [runners.docker]
-  image = "edgelensai/edgelens-sdk:0.2.1"
+  image = "edgelensai/edgelens-sdk:0.2.2"
   pull_policy = "if-not-present"
 ```
 

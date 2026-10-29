@@ -360,8 +360,9 @@ jobs:
             fi
             npm publish "$tgz" --access public --provenance
           }
-          publish @edgelens/core "dist/edgelens-core-$version.tgz"
-          publish @edgelens/playwright-plugin "dist/edgelens-playwright-plugin-$version.tgz"
+          # "./" matters: npm reads a bare "dist/x.tgz" as a GitHub owner/repo spec.
+          publish @edgelens/core "./dist/edgelens-core-$version.tgz"
+          publish @edgelens/playwright-plugin "./dist/edgelens-playwright-plugin-$version.tgz"
 
   image:
     needs: build

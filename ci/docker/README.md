@@ -17,7 +17,7 @@ jobs:
   edgelens-tests:
     runs-on: ubuntu-latest
     container:
-      image: edgelensai/edgelens-sdk:0.2.1
+      image: edgelensai/edgelens-sdk:0.2.2
     steps:
       - uses: actions/checkout@v4
       - run: pytest          # pytest + edgelens SDK already installed
@@ -30,7 +30,7 @@ jobs:
 
 ```yaml
 edgelens:
-  image: edgelensai/edgelens-sdk:0.2.1
+  image: edgelensai/edgelens-sdk:0.2.2
   script:
     - pytest
     - edgelens session list
@@ -44,7 +44,7 @@ edgelens:
 docker run --rm -it \
   -v "$PWD:/workspace" \
   -e EDGELENS_API_KEY \
-  edgelensai/edgelens-sdk:0.2.1 \
+  edgelensai/edgelens-sdk:0.2.2 \
   pytest
 ```
 
@@ -59,7 +59,7 @@ make image-smoke     # run the in-image smoke checks against <version>
 make publish-image   # push all three tags (requires registry login)
 ```
 
-For `VERSION` 0.1.0 that is `edgelensai/edgelens-sdk:0.2.1`, `:0.1` and
+For `VERSION` 0.1.0 that is `edgelensai/edgelens-sdk:0.2.2`, `:0.1` and
 `:latest`. Image tags carry no `v`. The image is labelled
 `org.opencontainers.image.version` (the version) and
 `org.opencontainers.image.revision` (the commit it was built from).

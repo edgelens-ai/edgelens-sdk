@@ -26,7 +26,7 @@ id=$($podman image inspect --format '{{.Id}}' "$image:$version" 2>/dev/null) || 
 }
 
 labels=$($podman image inspect "$image:$version" \
-    --format '{{index .Labels "org.opencontainers.image.revision"}} {{index .Labels "org.opencontainers.image.version"}}')
+    --format '{{index .Config.Labels "org.opencontainers.image.revision"}} {{index .Config.Labels "org.opencontainers.image.version"}}')
 revision=${labels% *}
 labelled=${labels#* }
 if [ "$revision" != "$head" ]; then
