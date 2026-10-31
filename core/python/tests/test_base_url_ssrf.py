@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from edgelens import EdgeLensClient
@@ -20,9 +23,33 @@ def test_http_scheme_refused_by_default():
 
 def test_http_scheme_allowed_when_explicitly_enabled():
     EdgeLensClient(
+        api_key="k", base_url="http://api.edgelens.ai",
+        allow_insecure_base_url=True,
+    )
+
+
+def test_local_http_dev_loop_needs_both_overrides(monkeypatch):
+    """http://localhost is two relaxations: the scheme and the host."""
+    with pytest.raises(AuthenticationError, match="private"):
+        EdgeLensClient(
+            api_key="k", base_url="http://localhost:8000",
+            allow_insecure_base_url=True,
+        )
+    monkeypatch.setenv("EDGELENS_ALLOW_PRIVATE_BASE_URL", "1")
+    EdgeLensClient(
         api_key="k", base_url="http://localhost:8000",
         allow_insecure_base_url=True,
     )
+
+
+@pytest.mark.parametrize("url", [
+    "http://169.254.169.254", "http://10.0.0.1", "http://[fd00:ec2::254]",
+])
+def test_insecure_flag_does_not_relax_host_check(url):
+    """allow_insecure_base_url permits http:// only; it is not a
+    private-host override."""
+    with pytest.raises(AuthenticationError, match="private|reserved"):
+        EdgeLensClient(api_key="k", base_url=url, allow_insecure_base_url=True)
 
 
 def test_non_http_scheme_refused():
@@ -64,13 +91,13 @@ def test_public_https_accepted():
     EdgeLensClient(api_key="k", base_url="https://api.edgelens.ai")
 
 
-# ---- self-hosted private-IP escape hatch ------------------------------
+# ---- private-address override -----------------------------------------
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "10.0.0.5:8000", "192.168.1.10", "172.16.0.1"])
 def test_private_ip_allowed_with_escape_hatch(host, monkeypatch):
-    """EDGELENS_ALLOW_PRIVATE_BASE_URL=1 lets a self-hosted api on a
-    loopback/RFC1918 address through."""
+    """EDGELENS_ALLOW_PRIVATE_BASE_URL=1 lets a base URL on a
+    loopback/RFC1918 address through, for example a local test server."""
     monkeypatch.setenv("EDGELENS_ALLOW_PRIVATE_BASE_URL", "1")
     EdgeLensClient(api_key="k", base_url=f"https://{host}")
 
@@ -104,7 +131,8 @@ def test_async_client_refuses_http_default():
         AsyncEdgeLensClient(api_key="k", base_url="http://api.edgelens.ai")
 
 
-def test_async_client_allows_http_with_flag():
+def test_async_client_allows_http_with_flag(monkeypatch):
+    monkeypatch.setenv("EDGELENS_ALLOW_PRIVATE_BASE_URL", "1")
     AsyncEdgeLensClient(
         api_key="k", base_url="http://localhost:8000",
         allow_insecure_base_url=True,
@@ -137,3 +165,33 @@ def test_http_client_does_not_follow_redirects():
 def test_async_http_client_does_not_follow_redirects():
     c = AsyncEdgeLensClient(api_key="k")
     assert c._http._client.follow_redirects is False
+
+
+# ---- shared host table -----------------------------------------------------
+#
+# core/testdata/base_url_hosts.json is also run by the TypeScript suite, so
+# the two clients refuse exactly the same hosts.
+
+_HOSTS = json.loads(
+    (Path(__file__).resolve().parents[2] / "testdata" / "base_url_hosts.json").read_text()
+)
+
+
+@pytest.mark.parametrize("host", _HOSTS["refused"])
+def test_shared_refused_hosts(host, monkeypatch):
+    monkeypatch.setenv("EDGELENS_ALLOW_PRIVATE_BASE_URL", "1")
+    with pytest.raises(AuthenticationError, match="link-local/reserved"):
+        EdgeLensClient(api_key="k", base_url=f"https://{host}/")
+
+
+@pytest.mark.parametrize("host", _HOSTS["private"])
+def test_shared_private_hosts(host, monkeypatch):
+    with pytest.raises(AuthenticationError, match="private/loopback"):
+        EdgeLensClient(api_key="k", base_url=f"https://{host}/")
+    monkeypatch.setenv("EDGELENS_ALLOW_PRIVATE_BASE_URL", "1")
+    EdgeLensClient(api_key="k", base_url=f"https://{host}/")
+
+
+@pytest.mark.parametrize("host", _HOSTS["public"])
+def test_shared_public_hosts(host):
+    EdgeLensClient(api_key="k", base_url=f"https://{host}/")

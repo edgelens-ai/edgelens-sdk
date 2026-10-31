@@ -4,8 +4,9 @@ Usage: check-artifacts.py DIST_DIR REPO_DIR
 
 Fails (exit 1) when:
   - an expected artifact is missing, or an unexpected one is present;
-  - an artifact carries a path that must never ship: an audit or scratch
-    tree, a .env file, node_modules, a virtualenv, or a tests/ directory;
+  - an artifact carries a path that must never ship: a local working-notes
+    directory (any name containing "audit"), a .env file, node_modules, a
+    virtualenv, or a tests/ directory;
   - an artifact's version differs from the repository's VERSION, or an npm
     manifest's @edgelens/core peer range is not ^VERSION;
   - an artifact lacks the LICENSE, or its LICENSE differs from the
@@ -39,7 +40,7 @@ NPM_DISTS = {
 }
 
 FORBIDDEN = [
-    (re.compile(r"(^|/)[^/]*audit[^/]*(/|$)"), "audit or review tree"),
+    (re.compile(r"(^|/)[^/]*audit[^/]*(/|$)"), "local working-notes directory"),
     (re.compile(r"(^|/)\.env($|\.|/)"), ".env file"),
     (re.compile(r"(^|/)node_modules(/|$)"), "node_modules"),
     (re.compile(r"(^|/)\.?venv(/|$)"), "virtualenv"),

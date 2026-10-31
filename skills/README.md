@@ -5,7 +5,7 @@ EdgeLens SDK to write tests against real edge-AI hardware.
 
 | Subdir | Target | Status |
 |---|---|---|
-| `claude-code/` | `CLAUDE.md` skill for Claude Code | Done — paired MCP server ships in `integrations/mcp/` (scaffold) |
+| `claude-code/` | `CLAUDE.md` skill for Claude Code | Done — paired MCP server ships in `integrations/mcp/` (`edgelens-mcp`) |
 | `cursor/` | `.cursorrules` for Cursor IDE | Done |
 | `copilot/` | `.github/copilot-instructions.md` for GitHub Copilot | Done |
 | `prompts/` | Generic LLM system prompt | Done |

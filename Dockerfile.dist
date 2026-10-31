@@ -6,15 +6,20 @@
 # shipped. The npm half needs no image of its own; the targets run the
 # pinned node base directly, because npm is already in it.
 #
-# Pinned so that `make dist` gives the same artifacts next month as today.
-# The build backend itself (hatchling) is fetched by `python -m build` into
-# an isolated environment, at the floor each pyproject.toml declares.
+# The build frontend and backend live in their own venv, /opt/build,
+# installed from scripts/release/build-requirements.txt with every wheel
+# pinned by sha256. build-python.sh builds with --no-isolation from that
+# venv, so a build fetches nothing and the same commit gives the same
+# artifact bytes on every run. twine only checks and uploads finished
+# artifacts and is pinned by version.
 
 FROM docker.io/library/python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
 
-RUN pip install --no-cache-dir --root-user-action=ignore \
-      build==1.6.1 \
-      twine==7.0.0
+COPY scripts/release/build-requirements.txt /opt/build-requirements.txt
+RUN python3 -m venv /opt/build \
+ && /opt/build/bin/pip install --no-cache-dir --disable-pip-version-check \
+      --require-hashes --only-binary :all: -r /opt/build-requirements.txt \
+ && pip install --no-cache-dir --root-user-action=ignore twine==7.0.0
 
 # Rootless podman can run as a non-root uid with HOME unset; pip and twine
 # both want somewhere to write a cache or a config file.
@@ -22,4 +27,4 @@ ENV HOME=/tmp \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_ROOT_USER_ACTION=ignore
 
-CMD ["python3", "-m", "build", "--help"]
+CMD ["/opt/build/bin/python", "-m", "build", "--help"]

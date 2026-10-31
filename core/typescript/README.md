@@ -97,6 +97,22 @@ for await (const chunk of session.device.stream()) {
 }
 ```
 
+A stream is capped, as in the Python SDK: 1 GiB in total, 600 s from the
+response headers, and the client's `timeoutMs` while waiting for the
+headers or for any one chunk. Hitting a cap throws. Pass `StreamOptions`
+to change a cap, or `null` to disable it:
+
+```ts
+session.device.stream({ maxBytes: null, maxDurationMs: 3_600_000, idleTimeoutMs: 60_000 });
+```
+
+Leaving the loop early (`break`, `return`, an exception) cancels the body
+and aborts the request.
+
+Every other request is bounded by `timeoutMs` from start to the last byte
+of the body, and its body by `maxResponseBytes` (64 MiB by default). Error
+messages carry at most 512 characters of the server's text.
+
 Inference snapshots stream too:
 
 ```ts
@@ -104,6 +120,22 @@ for await (const snap of session.device.inference.stream(60_000, 1_000)) {
   console.log(snap.fps, snap.detection_count);
 }
 ```
+
+## Base URL checks
+
+The client refuses a `baseUrl` that would send the API key somewhere it
+should not go, with the same rules as the Python SDK:
+
+- `http://` unless `allowInsecureBaseUrl: true`;
+- loopback, private and shared addresses (`127.0.0.0/8`, `10.0.0.0/8`,
+  `100.64.0.0/10`, `fc00::/7`, ...) and `localhost`, unless
+  `allowPrivateBaseUrl: true` or `EDGELENS_ALLOW_PRIVATE_BASE_URL=1`, for a
+  server you control, for example a local test server;
+- link-local, multicast, reserved and cloud metadata addresses
+  (`169.254.169.254`, `fe80::/10`, `fd00:ec2::254`), always.
+
+The two overrides are independent: a local `http://localhost` dev loop
+needs both.
 
 ## Custom fetch (proxies, tests)
 

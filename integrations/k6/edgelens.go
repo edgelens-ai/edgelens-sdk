@@ -38,6 +38,7 @@ package edgelens
 
 import (
 	"errors"
+	"fmt"
 
 	"go.k6.io/k6/js/modules"
 )
@@ -75,16 +76,29 @@ func (m *Module) Exports() modules.Exports {
 }
 
 // Connect returns a new client. The key is required: a client without
-// one would send every call, release included, unauthenticated.
+// one would send every call, release included, unauthenticated. The base
+// URL is checked before any call, as the Python and TypeScript clients
+// check it: http:// needs allowInsecureBaseUrl, a loopback, private or
+// shared-address host needs allowPrivateBaseUrl (or
+// EDGELENS_ALLOW_PRIVATE_BASE_URL=1), and a link-local, reserved or cloud
+// metadata host is refused regardless.
 //
 //	const client = edgelens.connect({ apiKey: "...", baseUrl: "..." });
 func (m *Module) Connect(opts ConnectOptions) (*Client, error) {
 	if opts.APIKey == "" {
 		return nil, errors.New("edgelens.connect: apiKey is required (set EDGELENS_API_KEY)")
 	}
-	baseURL := opts.BaseURL
-	if baseURL == "" {
-		baseURL = "https://api.edgelens.ai"
+	raw := opts.BaseURL
+	if raw == "" {
+		raw = "https://api.edgelens.ai"
+	}
+	allowPrivate := allowPrivateFromEnv()
+	if opts.AllowPrivateBaseURL != nil {
+		allowPrivate = *opts.AllowPrivateBaseURL
+	}
+	baseURL, err := validateBaseURL(raw, opts.AllowInsecureBaseURL, allowPrivate)
+	if err != nil {
+		return nil, fmt.Errorf("edgelens.connect: %w", err)
 	}
 	return &Client{
 		apiKey:  opts.APIKey,
@@ -95,6 +109,9 @@ func (m *Module) Connect(opts ConnectOptions) (*Client, error) {
 
 // ConnectOptions is what JS passes to edgelens.connect().
 type ConnectOptions struct {
-	APIKey  string `js:"apiKey"`
-	BaseURL string `js:"baseUrl"`
+	APIKey               string `js:"apiKey"`
+	BaseURL              string `js:"baseUrl"`
+	AllowInsecureBaseURL bool   `js:"allowInsecureBaseUrl"`
+	// Unset falls back to EDGELENS_ALLOW_PRIVATE_BASE_URL.
+	AllowPrivateBaseURL *bool `js:"allowPrivateBaseUrl"`
 }

@@ -46,6 +46,28 @@ def test_request_device_creates_session_and_waits():
     assert lib._session is fake_session
 
 
+def test_request_device_refuses_while_a_session_is_active(lib_with_session):
+    lib, fake_session = lib_with_session
+    fake_client = MagicMock()
+    lib._client = fake_client
+
+    with pytest.raises(EdgeLensError, match="sess_test is still active.*Release Device"):
+        lib.request_device()
+    fake_client.create_session.assert_not_called()
+    fake_session.release.assert_not_called()
+    assert lib._session is fake_session
+
+
+def test_request_device_after_release_device_allocates_again(lib_with_session):
+    lib, _ = lib_with_session
+    fake_client = MagicMock()
+    fake_client.create_session.return_value.id = "sess_second"
+    lib._client = fake_client
+
+    lib.release_device()
+    assert lib.request_device() == "sess_second"
+
+
 def test_request_device_default_os_is_a_valid_os_type():
     lib = EdgeLensLibrary(api_key="el_test_k")
     fake_client = MagicMock()

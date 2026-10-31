@@ -42,6 +42,15 @@ def test_encode_path_param_escapes_special_chars():
         assert c not in encoded
 
 
+@pytest.mark.parametrize("value", ["", ".", ".."])
+def test_encode_path_param_refuses_dot_segments(value):
+    """A dot segment is resolved by the URL parser, encoded or not."""
+    from edgelens.errors import EdgeLensError
+
+    with pytest.raises(EdgeLensError):
+        encode_path_param(value)
+
+
 # ---- allowed_root --------------------------------------------------
 
 

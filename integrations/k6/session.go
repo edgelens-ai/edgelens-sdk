@@ -32,7 +32,7 @@ func (s *Session) WaitReady(opts WaitReadyOptions) error {
 	deadline := time.Now().Add(time.Duration(opts.Timeout) * time.Second)
 	for time.Now().Before(deadline) {
 		var resp sessionResponse
-		if err := s.client.doJSON("GET", "/v1/sessions/"+s.ID, nil, &resp); err != nil {
+		if err := s.doJSON("GET", "", nil, &resp); err != nil {
 			return err
 		}
 		s.status = resp.Status
@@ -48,9 +48,18 @@ func (s *Session) WaitReady(opts WaitReadyOptions) error {
 	return fmt.Errorf("session %s did not reach ready within %ds", s.ID, opts.Timeout)
 }
 
+// doJSON sends a JSON request to /v1/sessions/<id><suffix>.
+func (s *Session) doJSON(method, suffix string, body []byte, out any) error {
+	path, err := sessionPath(s.ID, suffix)
+	if err != nil {
+		return err
+	}
+	return s.client.doJSON(method, path, body, out)
+}
+
 // Release releases the device.
 func (s *Session) Release() error {
-	return s.client.doJSON("DELETE", "/v1/sessions/"+s.ID, nil, nil)
+	return s.doJSON("DELETE", "", nil, nil)
 }
 
 // Device returns the per-session device operations object.
@@ -90,9 +99,11 @@ func (d *Device) Deploy(opts DeployOptions) error {
 	for i, f := range opts.Files {
 		parts = append(parts, filePart{field: fmt.Sprintf("file_%d", i), file: f})
 	}
-	return d.session.client.doMultipart(
-		"/v1/sessions/"+d.session.ID+"/deploy", parts, nil,
-	)
+	path, err := sessionPath(d.session.ID, "/deploy")
+	if err != nil {
+		return err
+	}
+	return d.session.client.doMultipart(path, parts, nil)
 }
 
 // Inference returns the per-device inference controller.
@@ -114,9 +125,7 @@ func (d *Device) Exec(command string, opts ExecOptions) (*ExecResult, error) {
 		"timeout": opts.Timeout,
 	})
 	var resp ExecResult
-	err := d.session.client.doJSON(
-		"POST", "/v1/sessions/"+d.session.ID+"/exec", body, &resp,
-	)
+	err := d.session.doJSON("POST", "/exec", body, &resp)
 	return &resp, err
 }
 

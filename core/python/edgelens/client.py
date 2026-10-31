@@ -16,8 +16,7 @@ class EdgeLensClient:
 
     Args:
         api_key: API key. If not provided, reads from EDGELENS_API_KEY env var.
-        base_url: Override the platform API base URL (for self-hosted
-            deployments). If not provided, reads from EDGELENS_BASE_URL
+        base_url: Override the platform API base URL. If not provided, reads from EDGELENS_BASE_URL
             env var, then falls back to DEFAULT_BASE_URL. Precedence:
             explicit arg > env var > default.
         timeout: Default HTTP request timeout in seconds.
@@ -41,10 +40,6 @@ class EdgeLensClient:
             raise AuthenticationError(
                 "No API key provided. Pass api_key=... or set EDGELENS_API_KEY."
             )
-        # EDGELENS_BASE_URL was documented (READMEs, .env examples)
-        # but honored by no SDK consumer — silently fell through to
-        # DEFAULT_BASE_URL, producing "Name or service not known" against
-        # api.edgelens.ai (NXDOMAIN) for every self-hosted user.
         # Use `is None` (not `or`) so an explicit base_url="" still
         # reaches the validator and raises loudly (the base_url validation contract).
         if base_url is None:

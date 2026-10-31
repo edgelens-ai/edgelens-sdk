@@ -5,7 +5,6 @@ without pytester.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from dataclasses import dataclass, field, fields
 from typing import Any, Optional
@@ -15,18 +14,13 @@ from edgelens import EdgeLensClient, Session
 logger = logging.getLogger(__name__)
 
 
-def _fingerprint(api_key: Optional[str]) -> str:
-    """Render a key so two different keys look different and neither is readable.
+def _mask(api_key: Optional[str]) -> str:
+    """Say whether a key is set, and nothing else about it.
 
-    A prefix would do the first but not the second: a prefix of a
-    secret is a piece of the secret, which is why the platform's own
-    truncated key display is not reusable here. Six hex characters of
-    sha256 identify a key to someone who already has it and give
-    nothing to someone who does not.
+    Any value derived from the key, a prefix or a digest alike, lets
+    whoever reads the output confirm a guessed key offline.
     """
-    if api_key is None:
-        return "None"
-    return f"<set sha256:{hashlib.sha256(api_key.encode()).hexdigest()[:6]}>"
+    return "None" if api_key is None else "<set>"
 
 
 @dataclass
@@ -46,7 +40,7 @@ class EdgelensOptions:
     def __repr__(self) -> str:
         # pytest renders fixture arguments when setup raises, so this
         # is what reaches a customer's CI log on a failed allocation.
-        shown = [f"api_key={_fingerprint(self.api_key)}"]
+        shown = [f"api_key={_mask(self.api_key)}"]
         shown += [
             f"{f.name}={getattr(self, f.name)!r}" for f in fields(self) if f.repr
         ]

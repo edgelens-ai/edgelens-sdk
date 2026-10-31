@@ -265,10 +265,9 @@ class Device:
             )
 
     def upload(self, local: Union[str, Path], remote: str) -> dict:
-        """Removed: the platform has no arbitrary-path upload endpoint.
+        """Not supported: the platform has no arbitrary-path upload endpoint.
 
-        This posted to ``/v1/sessions/{id}/upload``, which the API does
-        not define — every call 404'd. Push files with
+        Always raises ``DeviceError``. Push files with
         ``deploy(model=..., files=[...])`` (they land in
         ``/userdata/Models/`` on reCamaginedOS), or copy to a specific
         path over SSH using the credentials from ``ssh()``.

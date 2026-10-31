@@ -19,6 +19,9 @@ Derived rather than copied, so not listed here:
   - the Python User-Agent (built from edgelens.__version__);
   - the Robot Framework library version (EdgeLensLibrary.__version__).
 
+Also held to VERSION: the GitLab template's default EDGELENS_IMAGE, and the
+tag (v<version>) that any GitLab remote include of the template names.
+
 Standard library only (tomllib: Python 3.11+).
 """
 
@@ -59,16 +62,26 @@ LOCKS = {
 
 TS_USER_AGENT = "core/typescript/src/http.ts"
 ACTION_YML = "ci/github-action/action.yml"
+GITLAB_TEMPLATE = "ci/gitlab/edgelens.gitlab-ci.yml"
 IMAGE = "edgelensai/edgelens-sdk"
 
 PY_VERSION = re.compile(r'^(__version__ = ")([^"]*)(")', re.M)
 CORE_RANGE = re.compile(r'("edgelens-sdk)([^"]*)(")')
 TS_UA = re.compile(r'("edgelens-typescript/)([^"]*)(")')
 ACTION_DEFAULT = re.compile(r'(^    default: "' + re.escape(IMAGE) + r':)([^"]*)(")', re.M)
-# In any tracked text file: the action's ref and a pinned image tag.
+# The GitLab template's default image: the release's own tag, never :latest.
+GITLAB_DEFAULT = re.compile(r'(^    EDGELENS_IMAGE: "' + re.escape(IMAGE) + r':)([^"]*)(")', re.M)
+# In any tracked text file: the action's ref, a pinned image tag, and the
+# ref a GitLab remote include fetches the template from (a branch such as
+# main fails the check, being a moving ref).
 DOC_PATTERNS = [
     ("github-action ref", re.compile(r"(github-action@)([\w.\-]+)()"), "v{v}"),
     ("image tag", re.compile(r"(" + re.escape(IMAGE) + r":)(\d+\.\d+\.\d+)()"), "{v}"),
+    (
+        "gitlab include ref",
+        re.compile(r"(raw\.githubusercontent\.com/edgelens-ai/edgelens-sdk/)([^/\s\"']+)(/ci/gitlab/)"),
+        "v{v}",
+    ),
 ]
 SKIP_DIRS = {".git", "node_modules", "dist", "build", "venv", ".venv", "__pycache__"}
 
@@ -163,6 +176,10 @@ def check(root: Path, docs: list[str]) -> int:
     if not m or m.group(2) != v:
         bad(ACTION_YML, f"image default ({IMAGE}:...)", m and m.group(2), v)
 
+    m = GITLAB_DEFAULT.search((root / GITLAB_TEMPLATE).read_text())
+    if not m or m.group(2) != v:
+        bad(GITLAB_TEMPLATE, f"EDGELENS_IMAGE default ({IMAGE}:...)", m and m.group(2), v)
+
     for rel in docs:
         text = read_text(root, rel)
         if text is None:
@@ -224,6 +241,7 @@ def set_version(root: Path, v: str, docs: list[str]) -> None:
         set_json(root, pkg, deps, f"^{v}")
     rewrite(root, TS_USER_AGENT, TS_UA, v)
     rewrite(root, ACTION_YML, ACTION_DEFAULT, v)
+    rewrite(root, GITLAB_TEMPLATE, GITLAB_DEFAULT, v)
     for rel in docs:
         if read_text(root, rel) is None:
             continue

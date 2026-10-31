@@ -3,14 +3,18 @@
 # Include in your project's .gitlab-ci.yml via:
 #
 #   include:
-#     - remote: "https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/main/ci/gitlab/edgelens.gitlab-ci.yml"
+#     - remote: "https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/v0.2.4/ci/gitlab/edgelens.gitlab-ci.yml"
 #
-# Or, if your team mirrors this file into a shared repo:
+# Include it from a release tag, as above, never from a branch: GitLab
+# fetches the file again for every pipeline, so a branch ref runs whatever
+# that branch holds today, with your EDGELENS_API_KEY in the job. A remote
+# include cannot be pinned by checksum; to remove the dependency entirely,
+# mirror this file into a repo you control and include it from there:
 #
 #   include:
 #     - project: "shared/ci"
 #       file: "edgelens.gitlab-ci.yml"
-#       ref: main
+#       ref: "<the tag or commit you mirrored>"
 #
 # Then either:
 #
@@ -30,8 +34,11 @@
 #   EDGELENS_API_KEY
 #
 # Optional:
-#   EDGELENS_BASE_URL  — self-hosted EdgeLens deployments
-#   EDGELENS_IMAGE     — image tag override (default: edgelensai/edgelens-sdk:latest)
+#   EDGELENS_BASE_URL  — override the API base URL
+#   EDGELENS_IMAGE     — image override. Defaults to the image released with
+#                        this template (edgelensai/edgelens-sdk:0.2.4), never
+#                        the moving :latest tag. Pin a digest here for an
+#                        image that cannot change under you.
 
 # ---- base ------------------------------------------------------------------
 #
@@ -43,7 +50,8 @@
 .edgelens:base:
   image: $EDGELENS_IMAGE
   variables:
-    EDGELENS_IMAGE: "edgelensai/edgelens-sdk:latest"
+    # The release's own image; `make version-check` holds it to VERSION.
+    EDGELENS_IMAGE: "edgelensai/edgelens-sdk:0.2.4"
     JUNIT_FILE: "junit.xml"
     # Pip / npm caches off the runner volume so retries are fast.
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"

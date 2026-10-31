@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import random
+import re
+import socket
 import time
 from typing import Any, Iterable, Iterator, Optional, Union
 
@@ -32,12 +35,96 @@ def op_read_timeout(client_timeout: float, op_seconds: float) -> float:
 
 
 def _allow_private_base_url() -> bool:
-    """Escape hatch for self-hosted deployments reached by a private/loopback
-    IP. Off by default; opt in with ``EDGELENS_ALLOW_PRIVATE_BASE_URL`` set to
+    """Allow a base URL on a private or loopback address, for example a
+    local test server. Off by default; opt in with ``EDGELENS_ALLOW_PRIVATE_BASE_URL`` set to
     a truthy value."""
     return os.environ.get("EDGELENS_ALLOW_PRIVATE_BASE_URL", "").strip().lower() in {
         "1", "true", "yes", "on",
     }
+
+
+def _nets(*cidrs: str) -> tuple:
+    return tuple(ipaddress.ip_network(c) for c in cidrs)
+
+
+# The base URL host denylist. The TypeScript client carries the same tables
+# (core/typescript/src/baseurl.ts) and both suites run the shared cases in
+# core/testdata/base_url_hosts.json. The ranges are spelled out rather than
+# taken from ipaddress's is_private and friends, whose tables change between
+# Python releases.
+#
+# Refused even with EDGELENS_ALLOW_PRIVATE_BASE_URL: link-local, multicast,
+# unspecified, reserved, and the IPv6 instance metadata address.
+_V4_REFUSED = _nets("169.254.0.0/16", "224.0.0.0/4", "0.0.0.0/32", "240.0.0.0/4")
+_V6_REFUSED = _nets(
+    "fe80::/10", "ff00::/8", "::/128", "fd00:ec2::254/128",
+    "::/8", "100::/8", "200::/7", "400::/6", "800::/5", "1000::/4", "4000::/3",
+    "6000::/3", "8000::/3", "a000::/3", "c000::/3", "e000::/4", "f000::/5",
+    "f800::/6", "fe00::/9",
+)
+# Refused unless EDGELENS_ALLOW_PRIVATE_BASE_URL is set: loopback,
+# private-use, shared address space and the special-purpose blocks.
+_V4_PRIVATE = _nets(
+    "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "172.16.0.0/12",
+    "192.0.0.0/24", "192.0.0.170/31", "192.0.2.0/24", "192.168.0.0/16",
+    "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24",
+)
+_V4_PRIVATE_EXCEPT = _nets("192.0.0.9/32", "192.0.0.10/32")
+_V6_PRIVATE = _nets(
+    "::1/128", "64:ff9b:1::/48", "100::/64", "2001::/23", "2001:db8::/32",
+    "2002::/16", "3fff::/20", "fc00::/7",
+)
+_V6_PRIVATE_EXCEPT = _nets(
+    "2001:1::1/128", "2001:1::2/128", "2001:3::/32", "2001:4:112::/48",
+    "2001:20::/28", "2001:30::/28",
+)
+_LEGACY_IPV4 = re.compile(r"[0-9a-fx.]+")
+
+
+def _parse_host_ip(host: str) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
+    """The address a host literal names, or None for a DNS name.
+
+    Also reads the legacy IPv4 forms the system resolver accepts and a URL
+    parser following WHATWG normalises (``127.1``, ``2130706433``,
+    ``0x7f000001``), so they cannot slip past as names.
+    """
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    if _LEGACY_IPV4.fullmatch(host):
+        try:
+            return ipaddress.IPv4Address(socket.inet_aton(host))
+        except OSError:
+            pass
+    return None
+
+
+def _classify_host(hostname: str) -> str:
+    """``"public"``, ``"private"`` or ``"refused"`` for a URL hostname."""
+    host = hostname.lower()
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    if host.endswith("."):
+        host = host[:-1]
+    if host == "localhost" or host.endswith(".localhost"):
+        return "private"
+    ip = _parse_host_ip(host)
+    if ip is None:
+        return "public"
+    # Judge ::ffff:10.0.0.1 as 10.0.0.1.
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv4Address):
+        refused, private, exceptions = _V4_REFUSED, _V4_PRIVATE, _V4_PRIVATE_EXCEPT
+    else:
+        ip = ipaddress.IPv6Address(int(ip))  # drop any %scope
+        refused, private, exceptions = _V6_REFUSED, _V6_PRIVATE, _V6_PRIVATE_EXCEPT
+    if any(ip in n for n in refused):
+        return "refused"
+    if any(ip in n for n in private) and not any(ip in n for n in exceptions):
+        return "private"
+    return "public"
 
 
 def _validate_base_url(url: str, *, allow_insecure: bool = False) -> str:
@@ -45,24 +132,25 @@ def _validate_base_url(url: str, *, allow_insecure: bool = False) -> str:
 
     Rejects:
     - Non-http(s) schemes (file://, gopher://, ...).
-    - http:// unless ``allow_insecure=True`` (silent TLS downgrade).
-    - Link-local (incl. 169.254.169.254 cloud IMDS), multicast,
-      unspecified, reserved addresses — always, no override.
-    - Loopback + RFC1918 private addresses — unless the operator sets
-      ``EDGELENS_ALLOW_PRIVATE_BASE_URL=1``. That escape hatch exists for
-      a self-hosted api reached by LAN IP; it only relaxes loopback +
-      RFC1918, never IMDS/link-local, and applies to a ``base_url`` the
-      operator controls. Note the guard is host-literal only — a
-      hostname that *resolves* to a private IP is not caught here (DNS
-      pinning is the platform's job), so this is defense-in-depth, not a
-      complete SSRF boundary.
+    - http:// unless ``allow_insecure=True`` (silent TLS downgrade). This
+      does not relax the host check.
+    - Link-local (incl. the 169.254.169.254 and fd00:ec2::254 cloud
+      metadata addresses), multicast, unspecified and reserved addresses:
+      always, no override.
+    - Loopback, private-use, shared (100.64.0.0/10) and other
+      special-purpose addresses, and ``localhost``: unless the operator sets
+      ``EDGELENS_ALLOW_PRIVATE_BASE_URL=1``, for example to reach a local
+      test server. It never relaxes the first group, and applies to a
+      ``base_url`` the operator controls. The check reads the host as
+      written: a hostname is not resolved here, so a name that resolves to
+      a private address is not caught by it.
     - Empty hostnames.
 
-    Returns the URL with trailing slash stripped on success; raises
-    AuthenticationError on failure with a customer-actionable message.
+    The ranges are the tables above. Returns the URL with trailing slash
+    stripped on success; raises AuthenticationError on failure with a
+    customer-actionable message.
     """
     from urllib.parse import urlsplit
-    import ipaddress
 
     if not url:
         raise AuthenticationError("base_url is empty")
@@ -82,37 +170,55 @@ def _validate_base_url(url: str, *, allow_insecure: bool = False) -> str:
     if not host:
         raise AuthenticationError("base_url is missing a host")
 
-    # Literal IPs — apply the private-IP filter.
-    try:
-        ip = ipaddress.ip_address(host)
-        # Unwrap IPv4-mapped IPv6 so ::ffff:10.0.0.1 is judged as 10.0.0.1
-        # by the same filter as a plain IPv4 literal.
-        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-            ip = ip.ipv4_mapped
-        # IMDS/link-local, multicast, unspecified, reserved are never a
-        # legitimate api host — refuse unconditionally.
-        if ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
-            raise AuthenticationError(
-                f"base_url host {host} is a link-local/reserved "
-                "address — refusing to send Bearer token there."
-            )
-        # Loopback + RFC1918 are legitimate for self-hosted LAN
-        # deployments, but a token-exfil risk otherwise — refuse unless
-        # the operator explicitly opts in for a base_url they control.
-        if (ip.is_loopback or ip.is_private) and not _allow_private_base_url():
-            raise AuthenticationError(
-                f"base_url host {host} is a private/loopback address. If this "
-                "is a self-hosted EdgeLens api on your network, set "
-                "EDGELENS_ALLOW_PRIVATE_BASE_URL=1 to allow it — only for a "
-                "base_url you control (it relaxes an SSRF/token-exfil guard)."
-            )
-    except ValueError:
-        # Not a literal IP — caller resolves via DNS at request time.
-        # We don't pre-resolve here because the SDK lives in the customer
-        # process; DNS pinning is the platform's job.
-        pass
+    # The check applies to the host as written; a DNS name is resolved
+    # only when the request is made.
+    kind = _classify_host(host)
+    if kind == "refused":
+        raise AuthenticationError(
+            f"base_url host {host} is a link-local/reserved "
+            "address — refusing to send Bearer token there."
+        )
+    if kind == "private" and not _allow_private_base_url():
+        raise AuthenticationError(
+            f"base_url host {host} is a private/loopback address. If this "
+            "is a server you run, such as a local test server, set "
+            "EDGELENS_ALLOW_PRIVATE_BASE_URL=1 to allow it — only for a "
+            "base_url you control (it relaxes an SSRF/token-exfil guard)."
+        )
 
     return url.rstrip("/")
+
+
+# An error body is the server's text: from a hostile or compromised api, or a
+# proxy in front of it, it can be arbitrarily long and carry anything. Error
+# messages keep at most this many characters of it, with control characters
+# replaced, before it reaches a log, a terminal or an LLM transcript.
+MAX_ERROR_MESSAGE_CHARS = 512
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f]+")
+
+
+def bound_message(text: str) -> str:
+    """``text`` with control characters replaced by a space, cut to
+    ``MAX_ERROR_MESSAGE_CHARS``."""
+    flat = _CONTROL_CHARS.sub(" ", text).strip()
+    if len(flat) <= MAX_ERROR_MESSAGE_CHARS:
+        return flat
+    extra = len(flat) - MAX_ERROR_MESSAGE_CHARS
+    return f"{flat[:MAX_ERROR_MESSAGE_CHARS]}... ({extra} more characters)"
+
+
+def _error_message(response: httpx.Response) -> str:
+    """The server's message for an error response, bounded."""
+    msg: Any = None
+    try:
+        data = response.json()
+        if isinstance(data, dict):
+            msg = data.get("message") or data.get("error")
+    except Exception:
+        pass
+    if not isinstance(msg, str) or not msg:
+        msg = response.text or response.reason_phrase
+    return bound_message(msg)
 
 
 def encode_path_param(value: str) -> str:
@@ -122,9 +228,12 @@ def encode_path_param(value: str) -> str:
     should not rely on them.
 
     ``safe=""`` so even forward slashes get percent-encoded — there
-    are no legitimate slashes in a session id.
+    are no legitimate slashes in a session id. ``.`` and ``..`` are
+    refused: a URL parser resolves them as dot segments even when encoded.
     """
     from urllib.parse import quote
+    if value in ("", ".", ".."):
+        raise EdgeLensError(f"invalid path parameter: {value!r}")
     return quote(value, safe="")
 
 
@@ -279,7 +388,7 @@ class HTTPClient:
             except httpx.HTTPError as e:
                 last_exc = e
                 if not self._retry.should_retry(method, status=None, attempt=attempt):
-                    raise EdgeLensError(f"HTTP transport error: {e}") from e
+                    raise EdgeLensError(f"HTTP transport error: {bound_message(str(e))}") from e
                 time.sleep(self._retry.delay_for(attempt))
                 attempt += 1
                 continue
@@ -382,11 +491,7 @@ class HTTPClient:
 
     @staticmethod
     def _error_message(response: httpx.Response) -> str:
-        try:
-            data = response.json()
-            return data.get("message") or data.get("error") or response.text
-        except Exception:
-            return response.text or response.reason_phrase
+        return _error_message(response)
 
 
 class AsyncHTTPClient:
@@ -451,7 +556,7 @@ class AsyncHTTPClient:
                 )
             except httpx.HTTPError as e:
                 if not self._retry.should_retry(method, status=None, attempt=attempt):
-                    raise EdgeLensError(f"HTTP transport error: {e}") from e
+                    raise EdgeLensError(f"HTTP transport error: {bound_message(str(e))}") from e
                 await asyncio.sleep(self._retry.delay_for(attempt))
                 attempt += 1
                 continue
@@ -521,12 +626,7 @@ def _handle_async_response(response: httpx.Response, path: str) -> Any:
     if response.status_code == 404:
         raise SessionError(f"Resource not found: {path}")
     if response.status_code >= 400:
-        try:
-            data = response.json()
-            msg = data.get("message") or data.get("error") or response.text
-        except Exception:
-            msg = response.text or response.reason_phrase
-        raise EdgeLensError(f"API error {response.status_code}: {msg}")
+        raise EdgeLensError(f"API error {response.status_code}: {_error_message(response)}")
     if response.headers.get("content-type", "").startswith("application/json"):
         return response.json()
     return response.content

@@ -7,6 +7,7 @@ sessions we've allocated so follow-up tools don't have to reconstruct them.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Optional
@@ -14,6 +15,8 @@ from typing import Optional
 from edgelens import EdgeLensClient, Session
 
 ALLOW_EXTERNAL_SESSIONS_ENV = "EDGELENS_MCP_ALLOW_EXTERNAL_SESSIONS"
+
+logger = logging.getLogger(__name__)
 
 
 def external_sessions_allowed() -> bool:
@@ -25,6 +28,10 @@ class ServerState:
     _client: Optional[EdgeLensClient] = None
     _sessions: dict[str, Session] = field(default_factory=dict)
     _current_session_id: Optional[str] = None
+    # Ids this process created. Only these are released on shutdown and
+    # counted against the session limit: an external session resumed under
+    # the opt-in may belong to a teammate.
+    _owned_ids: set[str] = field(default_factory=set)
 
     def client(self) -> EdgeLensClient:
         """Return the singleton SDK client, building it on first call."""
@@ -46,6 +53,7 @@ class ServerState:
     def remember(self, session: Session) -> None:
         """Store a Session so follow-up tools can use it by id, and set current."""
         self._sessions[session.id] = session
+        self._owned_ids.add(session.id)
         self._current_session_id = session.id
 
     def get(self, session_id: Optional[str]) -> Session:
@@ -80,6 +88,7 @@ class ServerState:
 
     def forget(self, session_id: str) -> None:
         self._sessions.pop(session_id, None)
+        self._owned_ids.discard(session_id)
         if self._current_session_id == session_id:
             self._current_session_id = None
 
@@ -89,6 +98,30 @@ class ServerState:
 
     def list_session_ids(self) -> list[str]:
         return list(self._sessions.keys())
+
+    def owned_count(self) -> int:
+        """Number of sessions this process created and has not released."""
+        return len(self._owned_ids)
+
+    def release_owned(self) -> None:
+        """Release, best effort, every session this process created.
+
+        Called on server shutdown so a session the model never released
+        does not stay allocated and billed until the platform's timeout.
+        Failures are logged, never raised, so one bad release does not
+        skip the rest. Each id is forgotten, which makes a second call a
+        no-op.
+        """
+        for sid in list(self._owned_ids):
+            session = self._sessions.get(sid)
+            if session is not None:
+                try:
+                    session.release()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("shutdown release of session %s failed: %s", sid, exc)
+                else:
+                    logger.warning("released session %s on shutdown", sid)
+            self.forget(sid)
 
 
 # Module-level singleton; the server.py decorators capture it.

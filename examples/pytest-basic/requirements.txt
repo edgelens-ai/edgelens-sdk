@@ -1,0 +1,2 @@
+edgelens-pytest>=0.2.2
+pytest>=7.0

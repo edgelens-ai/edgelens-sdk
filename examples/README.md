@@ -8,7 +8,7 @@ deps, set `EDGELENS_API_KEY`, run.
 
 | Subdir | Framework | Demonstrates |
 |---|---|---|
-| [`pytest/`](./pytest/) | pytest | Face-detector benchmark suite, multi-model parametrize, `recamagined` custom binary, OS-agnostic smoke |
+| [`pytest-basic/`](./pytest-basic/) | pytest | Allocate a device, run a command, read device info |
 | [`playwright/`](./playwright/) | Playwright | Browser + camera in one test, per-OS projects, kiosk screenshot diff |
 | [`k6/`](./k6/) | k6 | 10-minute soak with `inference_fps` + `inference_latency_ms` thresholds, 30s smoke variant |
 | [`robot/`](./robot/) | Robot Framework | Suite-scoped device, template-parametrized FPS sweep, tagged regression subsets |

@@ -4,8 +4,8 @@
 
 import { Device } from "./device.js";
 import { EdgeLensTimeoutError, SessionError } from "./errors.js";
-import { HTTPClient } from "./http.js";
-import type { DeviceConnection, SessionResponse, SessionStatus } from "./types.js";
+import { HTTPClient, sessionPath } from "./http.js";
+import type { SessionResponse, SessionStatus } from "./types.js";
 
 const TERMINAL_FAIL: Set<SessionStatus> = new Set(["error", "expired", "released"]);
 
@@ -17,7 +17,6 @@ export class Session {
   readonly releasedAt: string | undefined;
   readonly returnedAt: string | undefined;
 
-  private connection: DeviceConnection | undefined;
   private cachedDevice: Device | undefined;
 
   private constructor(
@@ -31,7 +30,6 @@ export class Session {
     this.releasedAt = init.released_at;
     this.returnedAt = init.returned_at;
     if (init.device) {
-      this.connection = init.device;
       this.cachedDevice = new Device(http, init.id, init.device);
     }
   }
@@ -56,11 +54,10 @@ export class Session {
 
   /** Re-fetch state from the API. */
   async refresh(): Promise<this> {
-    const data = await this.http.get<SessionResponse>(`/v1/sessions/${this.id}`);
+    const data = await this.http.get<SessionResponse>(sessionPath(this.id));
     this.status = data.status;
     this.expiresAt = data.expires_at;
     if (data.device) {
-      this.connection = data.device;
       this.cachedDevice = new Device(this.http, this.id, data.device);
     }
     return this;
@@ -92,7 +89,7 @@ export class Session {
   /** End the session and release the device. Idempotent. */
   async release(): Promise<void> {
     if (this.status === "released") return;
-    await this.http.delete(`/v1/sessions/${this.id}`);
+    await this.http.delete(sessionPath(this.id));
     this.status = "released";
   }
 }

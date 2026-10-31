@@ -63,9 +63,8 @@ The MCP server reads `EDGELENS_API_KEY` from its environment — it does
 not receive the key from the LLM, so the LLM can't accidentally leak
 it back to the user.
 
-> **Status:** [`integrations/mcp/`](../integrations/mcp/) ships as a
-> Python 3.10+ scaffold. Bumping to GA tracks alongside the platform's
-> MCP roadmap.
+The server lives in [`integrations/mcp/`](../integrations/mcp/) and is
+published as `edgelens-mcp` (Python 3.10+).
 
 ## When to use the skill vs the MCP server
 

@@ -18,7 +18,7 @@ _SESSION = {
     "id": "sess_t",
     "status": "ready",
     "device": {
-        "mac": "2c:f7:f1:21:82:cf",
+        "mac": "aa:bb:cc:00:00:01",
         "host": "10.0.1.42",
         "ssh_user": "recamera",
         "ssh_password": "secret",

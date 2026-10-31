@@ -15,16 +15,12 @@ type Inference struct {
 
 // Start kicks off the built-in inference engine. stock-os only.
 func (i *Inference) Start() error {
-	return i.device.session.client.doJSON(
-		"POST", "/v1/sessions/"+i.device.session.ID+"/inference/start", nil, nil,
-	)
+	return i.device.session.doJSON("POST", "/inference/start", nil, nil)
 }
 
 // Stop halts inference.
 func (i *Inference) Stop() error {
-	return i.device.session.client.doJSON(
-		"POST", "/v1/sessions/"+i.device.session.ID+"/inference/stop", nil, nil,
-	)
+	return i.device.session.doJSON("POST", "/inference/stop", nil, nil)
 }
 
 // PercentileStats is a fps/latency rollup.
@@ -46,9 +42,7 @@ type Stats struct {
 // Stats returns one snapshot and emits k6 metrics.
 func (i *Inference) Stats() (*Stats, error) {
 	var s Stats
-	if err := i.device.session.client.doJSON(
-		"GET", "/v1/sessions/"+i.device.session.ID+"/inference/stats", nil, &s,
-	); err != nil {
+	if err := i.device.session.doJSON("GET", "/inference/stats", nil, &s); err != nil {
 		return nil, err
 	}
 	i.emit(&s)
@@ -62,9 +56,7 @@ func (i *Inference) Run(duration float64) (*Stats, error) {
 		"collect_frames": false,
 	})
 	var s Stats
-	if err := i.device.session.client.doJSON(
-		"POST", "/v1/sessions/"+i.device.session.ID+"/inference/results", body, &s,
-	); err != nil {
+	if err := i.device.session.doJSON("POST", "/inference/results", body, &s); err != nil {
 		return nil, err
 	}
 	i.emit(&s)

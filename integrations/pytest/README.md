@@ -53,7 +53,7 @@ tests mutate device state in ways the next test would inherit broken.
 | Flag | Default | Purpose |
 |---|---|---|
 | `--edgelens-key` | — | API key. Prefer `$EDGELENS_API_KEY`: a value on the command line is visible in the process list and shell history. |
-| `--edgelens-base-url` | — | Self-hosted EdgeLens deployments. |
+| `--edgelens-base-url` | — | Override the API base URL. |
 | `--edgelens-os` | `stock-os` | OS to flash. Alt: `recamagined`. |
 | `--edgelens-device-type` | `recamera-2002` | Device type to allocate. |
 | `--edgelens-scope` | `session` | `session` / `module` / `function`. |
@@ -62,7 +62,9 @@ tests mutate device state in ways the next test would inherit broken.
 
 `wait_ready` does not need a client-side timeout: the platform
 signals a readiness deadline on the session response and the
-SDK trusts it. `--edgelens-wait-timeout` is a deprecated
+SDK trusts it, up to a client-side maximum of 30 minutes, so a
+deadline the api keeps extending cannot hang the run.
+`--edgelens-wait-timeout` is a deprecated
 escape hatch; setting it emits a `PytestDeprecationWarning`.
 
 ## OS marker
@@ -118,7 +120,7 @@ strategy:
     os: [stock, recamagined]
 steps:
   - uses: actions/checkout@v4
-  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
+  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4
     with:
       api-key: ${{ secrets.EDGELENS_API_KEY }}
       command: pytest --edgelens-os=${{ matrix.os }} --junit-xml=junit.xml
@@ -126,7 +128,7 @@ steps:
 
 For fine-grained per-test OS switching inside a single run, drop the
 fixture scope to `function` and add a custom `os_variant` parametrize
-in your own `conftest.py` (see the SDK example projects).
+in your own `conftest.py`.
 
 ## JUnit metadata
 

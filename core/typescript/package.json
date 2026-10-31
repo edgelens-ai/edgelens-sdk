@@ -1,6 +1,6 @@
 {
   "name": "@edgelens/core",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "EdgeLens TypeScript client — test edge AI models on real hardware from your JS/TS code.",
   "license": "MIT",
   "type": "module",

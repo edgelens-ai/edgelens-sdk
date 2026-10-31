@@ -1,13 +1,18 @@
 # Publish a release: the five Python packages to PyPI, the two npm packages
 # to npm and the CI image to Docker Hub, all from the commit a `v<VERSION>`
-# tag points at. RELEASING.md describes the procedure and the one-time setup.
+# tag points at.
 #
-#   build ──┬── pypi-sdk ── pypi (cli, mcp, pytest, robot) ── npm
-#           └── image
+#   build ── pypi-sdk ── pypi (cli, mcp, pytest, robot) ── npm ── image
+#
+# build makes every artifact once: dist/ (wheels, sdists, npm tarballs) and
+# the CI image, built from those same dist/ files and smoke-tested. Each
+# later job only publishes what build made, so a failed publish stops every
+# job after it, and the image reaches Docker Hub only once PyPI and npm
+# both have the release.
 #
 # PyPI and npm use trusted publishing (OIDC): no registry token for either is
 # stored anywhere. Docker Hub uses an access token held by the `dockerhub`
-# environment.
+# environment, logged in for the push step only.
 #
 # Each PyPI project uploads from its own job and its own environment,
 # `pypi-<project>`. PyPI matches a trusted publisher on owner, repository,
@@ -45,9 +50,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     outputs:
       commit: ${{ steps.tag.outputs.commit }}
+      image-sha256: ${{ steps.image.outputs.sha256 }}
     env:
       # The Makefile defaults to podman with SELinux-relabelled mounts; the
       # runner has docker and no SELinux.
@@ -92,18 +98,34 @@ jobs:
       - name: make dist-check
         run: make dist-check
 
-      # Built here as a check only. The image job builds it again from the
-      # same commit rather than receiving it as an artifact: the image
-      # carries browsers and runs to gigabytes, every FROM line is pinned
-      # by digest and the k6 download by checksum, and publish-image needs
-      # the image in the local store of the job that pushes it.
+      # make image checks dist/ against SHA256SUMS and this commit, then
+      # installs those very files into the image.
       - name: make image
         run: make image
+
+      - name: make image-smoke
+        run: make image-smoke
+
+      # The image job pushes this saved image rather than building its own,
+      # so a re-run of that job pushes the same image, which publish-image
+      # recognises in the registry by its config digest.
+      - name: make image-save
+        id: image
+        run: |
+          make image-save
+          echo "sha256=$(sha256sum build/image.tar | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
       - uses: "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9" # v7.0.2
         with:
           name: dist
           path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9" # v7.0.2
+        with:
+          name: image
+          path: build/image.tar
           if-no-files-found: error
           retention-days: 7
 
@@ -311,6 +333,12 @@ jobs:
             echo "::error::dist was built from '$built', not $COMMIT"
             exit 1
           fi
+          listed=$(sed 's/^[0-9a-f]*  //' dist/SHA256SUMS | sort)
+          present=$(find dist -mindepth 1 -maxdepth 1 ! -name BUILD_INFO ! -name SHA256SUMS -printf '%f\n' | sort)
+          if [ "$listed" != "$present" ]; then
+            echo "::error::dist holds files the build did not record"
+            exit 1
+          fi
           (cd dist && sha256sum --strict --quiet -c SHA256SUMS)
 
       - uses: "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1" # v7.1.0
@@ -318,11 +346,30 @@ jobs:
           node-version: "22"
           registry-url: https://registry.npmjs.org
 
-      # Trusted publishing needs npm 11.5.1 or later.
+      # Trusted publishing needs npm 11.5.1 or later. This job holds
+      # id-token: write, so the npm that publishes is pinned by version and
+      # by the registry's sha512 integrity for that version: the tarball is
+      # checked before anything from it runs, and installed offline with no
+      # lifecycle scripts (npm ships its dependencies inside its tarball).
+      # To move to another version, take dist.integrity from
+      # https://registry.npmjs.org/npm/<version>.
       - name: Install npm
+        env:
+          NPM_VERSION: 11.21.1
+          NPM_INTEGRITY: sha512-YTzL6QBEJXyHcTu0JiUc7RKMp+mzlJtl7rGLmERaXUQeFHIMc9atdr6G9M9C8vDWbv40epoTQAzNL2/PtZVDhQ==
         run: |
-          npm install -g npm@11.21.1
+          curl -fsSL -o "$RUNNER_TEMP/npm.tgz" "https://registry.npmjs.org/npm/-/npm-$NPM_VERSION.tgz"
+          have="sha512-$(openssl dgst -sha512 -binary "$RUNNER_TEMP/npm.tgz" | base64 -w 0)"
+          if [ "$have" != "$NPM_INTEGRITY" ]; then
+            echo "::error::npm-$NPM_VERSION.tgz has integrity $have, not $NPM_INTEGRITY"
+            exit 1
+          fi
+          npm install -g --offline --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP/npm.tgz"
           have=$(npm --version)
+          if [ "$have" != "$NPM_VERSION" ]; then
+            echo "::error::npm reports $have after installing $NPM_VERSION"
+            exit 1
+          fi
           lowest=$(printf '%s\n' 11.5.1 "$have" | sort -V | head -n 1)
           if [ "$lowest" != 11.5.1 ]; then
             echo "::error::npm $have is older than 11.5.1"
@@ -332,8 +379,8 @@ jobs:
 
       # Core first: the plugin's peer range names it. A version already on
       # the registry is skipped only when it is this very tarball (the
-      # registry's integrity equals the tarball's sha512), as after a
-      # package's first, manual publish; any other copy fails the job.
+      # registry's integrity equals the tarball's sha512), as on a re-run;
+      # any other copy fails the job.
       - name: Publish @edgelens/core, then @edgelens/playwright-plugin
         run: |
           version=${TAG#v}
@@ -364,13 +411,16 @@ jobs:
           publish @edgelens/core "./dist/edgelens-core-$version.tgz"
           publish @edgelens/playwright-plugin "./dist/edgelens-playwright-plugin-$version.tgz"
 
+  # Last: the image goes out only once PyPI and npm both have the release.
   image:
-    needs: build
+    needs: [build, pypi-sdk, pypi-integrations, npm]
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 60
     environment:
       name: dockerhub
       url: https://hub.docker.com/r/edgelensai/edgelens-sdk
+    permissions:
+      contents: read
     env:
       PODMAN: docker
       VOL_RO: ":ro"
@@ -391,21 +441,40 @@ jobs:
             exit 1
           fi
 
-      # Docker Hub's OIDC connection could replace this secret, but it is
-      # offered only on the Team and Business plans.
+      - uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333" # v8.0.2
+        with:
+          name: image
+          path: build
+
+      - name: Verify and load the image
+        env:
+          IMAGE_SHA256: ${{ needs.build.outputs.image-sha256 }}
+        run: |
+          have=$(sha256sum build/image.tar | cut -d ' ' -f 1)
+          if [ -z "$IMAGE_SHA256" ] || [ "$have" != "$IMAGE_SHA256" ]; then
+            echo "::error::image.tar has sha256 $have, but the build job saved '$IMAGE_SHA256'"
+            exit 1
+          fi
+          make image-load
+
+      # Every check publish-image runs, without credentials: the version
+      # check, check-release-pins.sh, check-image.sh (built from HEAD, and
+      # the version either absent from the registry or this same image)
+      # and the choice of moving tags. Prints the plan; pushes nothing.
+      - name: make image-plan
+        run: make image-plan
+
       - uses: "docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6" # v4.7.0
         with:
           username: edgelensai
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: make image
-        run: make image
-
-      - name: make image-smoke
-        run: make image-smoke
-
-      # publish-image runs the version check, check-release-pins.sh and
-      # check-image.sh (built from HEAD, tags agree, and the version is not
-      # already in the registry) before the first push.
+      # Pushes the version tag (skipped when the registry already holds this
+      # image under it) and the moving tags image-plan chose, then reads
+      # every pushed tag back and fails unless each names this image.
       - name: make publish-image
         run: make publish-image
+
+      - name: Log out of Docker Hub
+        if: always()
+        run: docker logout docker.io

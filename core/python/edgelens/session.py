@@ -12,19 +12,22 @@ from edgelens.errors import SessionError, TimeoutError
 from edgelens.types import DeviceConnection, OSType, SessionStatus
 
 
-# safety-net ceiling for wait_ready when the server returns no
-# `deadline` field at all (older api, broken response). Should never
-# fire when talking to a current api version. Module-level so tests
-# can monkey-patch to a small value without waiting 30 real minutes.
-_SAFETY_NET_S: float = 30 * 60
+# The longest wait_ready waits when the caller passes no ``timeout``,
+# whatever the server says. A server deadline is trusted only up to this
+# ceiling: a hostile, compromised or buggy api that keeps returning a
+# far-future deadline, or keeps pushing it forward, cannot hold the caller
+# indefinitely. It is also the only stop when the server returns no
+# ``deadline`` at all (an older api version or a broken response).
+# ``_SAFETY_NET_S`` is the value wait_ready reads; tests monkey-patch it.
+DEFAULT_MAX_WAIT_S: float = 30 * 60
+_SAFETY_NET_S: float = DEFAULT_MAX_WAIT_S
 
 # grace period past the server's `deadline` before wait_ready
-# gives up. The platform flips a stuck session to ERROR on
-# the tick after `deadline`; we wait that long so the platform's
-# actual error reason (from db.error_message) surfaces on the next
-# poll — rather than the SDK speculatively raising a generic
-# "did not become ready by server deadline" SessionError that loses
-# the real cause. Module-level so tests can shorten it.
+# gives up. The platform moves a session that missed its deadline to
+# ERROR shortly after it; waiting this long lets the platform's own
+# error reason surface on the next poll, rather than the SDK raising a
+# generic "did not become ready by server deadline" SessionError that
+# loses the real cause. Module-level so tests can shorten it.
 _DEADLINE_GRACE_S: float = 30
 
 
@@ -35,10 +38,9 @@ def _parse_deadline(raw: Optional[str]) -> Optional[datetime]:
     Handles trailing 'Z' for Python 3.9's fromisoformat which won't
     accept it natively.
 
-    coerces naive datetimes to UTC — some api response paths
-    (notably the SQLite dev backend) round-trip tzinfo away, so a
-    subsequent GET may return a bare "2026-08-30T15:47:58" string
-    while POST returned "...Z"-suffixed. Comparing the two in
+    coerces naive datetimes to UTC — a response may carry a bare
+    "2026-08-30T15:47:58" string where another carried a
+    "...Z"-suffixed one. Comparing the two in
     ``refresh``'s monotonicity guard would `TypeError`. Assume UTC
     for tz-less inputs — the api's own contract is "UTC deadlines
     always", so this can't misinterpret an offset the server meant
@@ -53,6 +55,38 @@ def _parse_deadline(raw: Optional[str]) -> Optional[datetime]:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+def _past_deadline(deadline: Optional[datetime], grace_s: float) -> bool:
+    """True once ``now`` is past ``deadline`` plus ``grace_s``. A deadline
+    too far out to add the grace to is never past."""
+    if deadline is None:
+        return False
+    try:
+        return datetime.now(timezone.utc) >= deadline + timedelta(seconds=grace_s)
+    except OverflowError:
+        return False
+
+
+def _max_wait_error(
+    session_id: str,
+    status: SessionStatus,
+    deadline: Optional[datetime],
+    max_wait_s: float,
+) -> TimeoutError:
+    """The TimeoutError wait_ready raises when its client-side maximum wait
+    runs out with no caller ``timeout``."""
+    if deadline is None:
+        why = "The server returned no ``deadline`` field. Is the api on an older version?"
+    else:
+        why = (
+            f"The server deadline {deadline.isoformat()} lies beyond it; "
+            "pass timeout= to wait longer."
+        )
+    return TimeoutError(
+        f"Session {session_id} did not become ready within the client-side "
+        f"maximum wait (safety-net) of {max_wait_s}s (status={status.value}). {why}"
+    )
 
 
 # Session state machine. Refresh rejects
@@ -200,7 +234,8 @@ class Session:
 
         Args:
             timeout: Client-side override in seconds. Default ``None``
-                trusts the server's deadline. Pass an explicit value
+                trusts the server's deadline, but never for longer than
+                ``DEFAULT_MAX_WAIT_S`` (30 minutes). Pass an explicit value
                 for testing or abort-early — it is a *ceiling*, not a
                 floor, so it only shortens the wait (never extends
                 past the server deadline).
@@ -212,9 +247,9 @@ class Session:
                 period, see ``_DEADLINE_GRACE_S``) without the platform
                 flipping the row to ERROR — treated as a stuck platform
                 rather than the SDK speculating about the cause.
-            TimeoutError: The explicit ``timeout=`` ceiling fired, OR
-                the safety-net fired because the server returned no
-                deadline (an older api version or broken response).
+            TimeoutError: The explicit ``timeout=`` ceiling fired, OR,
+                with no ``timeout``, the client-side maximum wait fired
+                (the server's deadline lay beyond it, or there was none).
         """
         started_at = time.monotonic()
         while True:
@@ -237,11 +272,7 @@ class Session:
             # row to ERROR on its next tick and we'd rather surface
             # the platform's own error reason than raise a speculative
             # SessionError here.
-            if (
-                self.deadline is not None
-                and datetime.now(timezone.utc)
-                >= self.deadline + timedelta(seconds=_DEADLINE_GRACE_S)
-            ):
+            if _past_deadline(self.deadline, _DEADLINE_GRACE_S):
                 raise SessionError(
                     f"Session {self.id} passed server deadline "
                     f"{self.deadline.isoformat()} + {_DEADLINE_GRACE_S}s grace "
@@ -249,16 +280,8 @@ class Session:
                     f"(status={self.status.value}). The platform may be "
                     "stuck preparing this session; contact support with this session id."
                 )
-            if (
-                self.deadline is None
-                and timeout is None
-                and elapsed >= _SAFETY_NET_S
-            ):
-                raise TimeoutError(
-                    f"Session {self.id} did not become ready within safety-net "
-                    f"{_SAFETY_NET_S}s and the server returned no ``deadline`` field. "
-                    "Is the api on an older version?"
-                )
+            if timeout is None and elapsed >= _SAFETY_NET_S:
+                raise _max_wait_error(self.id, self.status, self.deadline, _SAFETY_NET_S)
             time.sleep(poll_interval)
 
     def time_to_deadline(self) -> Optional[timedelta]:

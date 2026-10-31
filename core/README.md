@@ -4,6 +4,5 @@ Shared client libraries used by all framework integrations. Each language target
 
 | Subdir | Package | Registry | Status |
 |---|---|---|---|
-| `python/` | `edgelens-sdk` (imports as `edgelens`) | PyPI | Planned |
-| `typescript/` | `@edgelens/core` | npm | Planned |
-| `go/` | `github.com/edgelens-ai/edgelens-go` | Go modules | Planned (used by xk6-edgelens) |
+| `python/` | `edgelens-sdk` (imports as `edgelens`) | PyPI | Available |
+| `typescript/` | `@edgelens/core` | npm | Available |

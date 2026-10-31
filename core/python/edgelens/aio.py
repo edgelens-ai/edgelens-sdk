@@ -187,8 +187,9 @@ class AsyncSession:
         """Async mirror of ``Session.wait_ready`` (server-driven).
 
         See the sync docstring for semantics — same server-deadline
-        precedence and safety-net behavior; ``timeout`` remains as an
-        explicit override for testing / abort-early.
+        precedence and the same client-side maximum wait
+        (``DEFAULT_MAX_WAIT_S``) when no ``timeout`` is given; ``timeout``
+        remains as an explicit override for testing / abort-early.
         """
         loop = asyncio.get_event_loop()
         started_at = loop.time()
@@ -210,11 +211,7 @@ class AsyncSession:
             # server_deadline + grace (attribute-lookup on the
             # session module so tests can monkey-patch the constant
             # and both sync + async pick it up).
-            if (
-                self.deadline is not None
-                and datetime.now(timezone.utc)
-                >= self.deadline + timedelta(seconds=_session_mod._DEADLINE_GRACE_S)
-            ):
+            if _session_mod._past_deadline(self.deadline, _session_mod._DEADLINE_GRACE_S):
                 raise SessionError(
                     f"Session {self.id} passed server deadline "
                     f"{self.deadline.isoformat()} + "
@@ -223,15 +220,9 @@ class AsyncSession:
                     f"(status={self.status.value}). The platform may be "
                     "stuck preparing this session; contact support with this session id."
                 )
-            if (
-                self.deadline is None
-                and timeout is None
-                and elapsed >= _session_mod._SAFETY_NET_S
-            ):
-                raise TimeoutError(
-                    f"Session {self.id} did not become ready within safety-net "
-                    f"{_session_mod._SAFETY_NET_S}s and the server returned no "
-                    "``deadline`` field. Is the api on an older version?"
+            if timeout is None and elapsed >= _session_mod._SAFETY_NET_S:
+                raise _session_mod._max_wait_error(
+                    self.id, self.status, self.deadline, _session_mod._SAFETY_NET_S
                 )
             await asyncio.sleep(poll_interval)
 
@@ -328,8 +319,8 @@ class AsyncDevice:
             )
 
     async def upload(self, local: Union[str, Path], remote: str) -> dict:
-        """Removed: the platform has no arbitrary-path upload endpoint.
-        Async mirror of ``Device.upload`` — see it for the migration."""
+        """Not supported: the platform has no arbitrary-path upload endpoint.
+        Async mirror of ``Device.upload``; always raises ``DeviceError``."""
         raise DeviceError(
             "device.upload() is not supported — the platform has no "
             "arbitrary-path upload endpoint. Push files with "

@@ -34,13 +34,11 @@ def test_client_reads_env_var(monkeypatch):
 
 
 def test_base_url_reads_env_var(monkeypatch):
-    """EDGELENS_BASE_URL was documented but silently ignored —
-    every self-hosted user's requests went to the DEFAULT_BASE_URL
-    (NXDOMAIN api.edgelens.ai). Env fallback must be honored."""
+    """EDGELENS_BASE_URL is honored when no base_url is passed."""
     monkeypatch.setenv("EDGELENS_API_KEY", "test_key")
-    monkeypatch.setenv("EDGELENS_BASE_URL", "https://self-hosted.example.com")
+    monkeypatch.setenv("EDGELENS_BASE_URL", "https://api.example.com")
     client = EdgeLensClient()
-    assert str(client._http._client.base_url).rstrip("/") == "https://self-hosted.example.com"
+    assert str(client._http._client.base_url).rstrip("/") == "https://api.example.com"
 
 
 def test_base_url_explicit_arg_wins_over_env(monkeypatch):
@@ -64,9 +62,9 @@ def test_async_client_base_url_reads_env_var(monkeypatch):
     """async client mirrors the sync env-fallback."""
     from edgelens.aio import AsyncEdgeLensClient
     monkeypatch.setenv("EDGELENS_API_KEY", "test_key")
-    monkeypatch.setenv("EDGELENS_BASE_URL", "https://self-hosted.example.com")
+    monkeypatch.setenv("EDGELENS_BASE_URL", "https://api.example.com")
     client = AsyncEdgeLensClient()
-    assert str(client._http._client.base_url).rstrip("/") == "https://self-hosted.example.com"
+    assert str(client._http._client.base_url).rstrip("/") == "https://api.example.com"
 
 
 def test_session_pending_no_device(httpx_mock):
@@ -97,7 +95,7 @@ def test_session_ready_with_device(httpx_mock):
             "status": "ready",
             "expires_at": "2026-04-26T15:00:00Z",
             "device": {
-                "mac": "2c:f7:f1:21:82:cf",
+                "mac": "aa:bb:cc:00:00:01",
                 "host": "10.0.1.42",
                 "ssh_port": 22,
                 "ssh_user": "recamera",
@@ -129,7 +127,7 @@ def test_inference_unavailable_on_recamagined(httpx_mock):
             "id": "sess_thin",
             "status": "ready",
             "device": {
-                "mac": "2c:f7:f1:21:82:cf",
+                "mac": "aa:bb:cc:00:00:01",
                 "host": "10.0.1.42",
                 "ssh_user": "recamera",
                 "ssh_password": "secret",

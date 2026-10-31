@@ -11,10 +11,7 @@ tests should never touch raw HTTP. Reference it when:
 - Writing a brand-new SDK in a language we don't yet ship.
 - Building a one-off curl script for CI.
 
-The OpenAPI spec is served at `/api/spec.json` (the interactive docs
-pages are not served). The reference below
-covers the public, customer-facing endpoints; the portal-only `/v1/accounts`
-routes are not part of the public API.
+The reference below covers the public, customer-facing endpoints.
 
 ## Authentication
 
@@ -25,19 +22,16 @@ Authorization: Bearer el_live_xxxxxxxxxxxxxxxxxxxx
 ```
 
 Keys are minted in the portal. The plaintext is returned exactly once
-at creation; the API only stores a HMAC-SHA256 hash. A revoked key
+at creation; after that only a hash is stored. A revoked key
 returns `401 API key has been revoked`.
 
 ## Rate limits
 
-- Per-key token bucket: 5 req/s with a burst of 20 by default. A 429
-  carries `Retry-After` (whole seconds, at least 1).
-- Per source IP, before authentication, on `/v1/*`: at most 10 requests
-  in a one-second window. A 429 from this limit carries `Retry-After: 1`;
-  pause a full second before retrying, because requests sent while
-  limited keep the window closed. (`/health` and `/api/spec.json` are
-  exempt.)
-- Body size is capped: `/v1/*` at 32 MiB, anything else at 64 KiB.
+- Requests are rate-limited. A `429` carries `Retry-After` in whole
+  seconds: wait at least that long before retrying, and back off
+  further if it repeats, because requests sent while limited keep the
+  limit in force.
+- Request bodies are size-capped. An oversized body gets `413`.
 
 ## Error shape
 
@@ -59,7 +53,7 @@ Status code semantics across the API:
 | 409 | State conflict — session not in `ready` state, device already in use, etc. |
 | 410 | Session was released; the operation is no longer valid. |
 | 413 | Request body exceeded the size cap. |
-| 422 | Pydantic validation failed — bad field type, unknown field, out-of-range value. |
+| 422 | Validation failed — bad field type, unknown field, out-of-range value. |
 | 429 | Rate-limited, or `max_concurrent_sessions` exceeded. Honor `Retry-After`. |
 
 ## Sessions

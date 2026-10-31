@@ -3,7 +3,7 @@
 # preset.
 
 include:
-  - remote: "https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/main/ci/gitlab/edgelens.gitlab-ci.yml"
+  - remote: "https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/v0.2.4/ci/gitlab/edgelens.gitlab-ci.yml"
 
 stages:
   - test

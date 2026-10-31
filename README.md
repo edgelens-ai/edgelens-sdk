@@ -25,7 +25,7 @@ edgelens-sdk/
 │   ├── github-action/   # GitHub Action (used from this repo)
 │   └── gitlab/          # GitLab CI templates
 ├── examples/            # Working example projects per integration
-│   ├── pytest/
+│   ├── pytest-basic/
 │   ├── playwright/
 │   ├── k6/
 │   ├── robot/
@@ -51,8 +51,8 @@ edgelens-sdk/
 | `@edgelens/core` | npm | `npm install @edgelens/core` |
 | `@edgelens/playwright-plugin` | npm | `npm install @edgelens/playwright-plugin` |
 | `xk6-edgelens` | GitHub releases | `xk6 build --with github.com/edgelens-ai/edgelens-sdk/integrations/k6` |
-| `edgelensai/edgelens-sdk` | Docker Hub | `docker pull edgelensai/edgelens-sdk:0.2.2` |
-| GitHub Action | GitHub | `uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2` |
+| `edgelensai/edgelens-sdk` | Docker Hub | `docker pull edgelensai/edgelens-sdk:0.2.4` |
+| GitHub Action | GitHub | `uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4` |
 
 ## Quick Start
 
@@ -66,9 +66,7 @@ See [examples/](./examples/) for complete working test projects.
 
 ## Development
 
-Releasing: see [RELEASING.md](./RELEASING.md).
-
-This monorepo uses per-package tooling — each package has its own build, test, and lint setup. See each subdirectory's README for development instructions.
+This monorepo uses per-package tooling — each package has its own build, test, and lint setup. See each subdirectory's README for development instructions. `make help` lists the root targets: the offline test suite, the release artifacts and the CI image.
 
 ## License
 

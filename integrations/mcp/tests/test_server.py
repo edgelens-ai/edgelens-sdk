@@ -306,7 +306,11 @@ def test_exec_command_propagates_exit_code(
     _fresh_state.remember(fake_session)
 
     result = server.exec_command(command="echo hi", timeout_s=5.0)
-    assert result == {"stdout": "hi\n", "stderr": "", "exit_code": 0}
+    assert result == {
+        "stdout": "<untrusted-device-output>hi\n</untrusted-device-output>",
+        "stderr": "<untrusted-device-output></untrusted-device-output>",
+        "exit_code": 0,
+    }
     fake_session.device.exec.assert_called_once_with("echo hi", timeout=5.0)
 
 
@@ -323,7 +327,7 @@ def test_exec_command_requires_ready_session(
         server.exec_command(command="ls")
 
 
-def test_deploy_model_passes_through(
+def test_deploy_model_uploads_from_the_verified_handles(
     fake_client: MagicMock, _fresh_state: state.ServerState,
     monkeypatch: pytest.MonkeyPatch, tmp_path,
 ):
@@ -338,16 +342,30 @@ def test_deploy_model_passes_through(
     extra.write_bytes(b"x")
 
     fake_session = _ready_session()
-    fake_session.device.deploy.return_value = {"success": True}
+    seen: dict = {}
+
+    def post(path, files):
+        seen["path"] = path
+        seen["files"] = {k: (name, fh.read()) for k, (name, fh) in files.items()}
+        return {"success": True, "message": "deployed"}
+
+    fake_session.device._http.post.side_effect = post
     _fresh_state.remember(fake_session)
 
     result = server.deploy_model(
         model_path=str(model), config_path=str(config), extra_files=[str(extra)],
     )
-    assert result == {"success": True}
-    fake_session.device.deploy.assert_called_once_with(
-        model=str(model), config=str(config), files=[str(extra)],
-    )
+    assert result == {
+        "success": True,
+        "message": "<untrusted-device-output>deployed</untrusted-device-output>",
+    }
+    assert seen["path"] == "/v1/sessions/sess_x/deploy"
+    assert seen["files"] == {
+        "model": ("m.cvimodel", b"m"),
+        "config": ("c.json", b"{}"),
+        "file_0": ("extra", b"x"),
+    }
+    fake_session.device.deploy.assert_not_called()
 
 
 def test_get_ssh_details_includes_ssh_command(
@@ -382,14 +400,15 @@ def test_get_ssh_details_redacts_password_by_default(
     assert "password_file" not in result
 
 
-def test_get_ssh_details_reveal_writes_password_file(
+def test_get_ssh_details_reveal_returns_password_and_writes_no_file(
     fake_client: MagicMock, _fresh_state: state.ServerState,
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path,
 ):
-    """When the operator opts in, the password goes to a 0o600 file —
-    the cleartext still doesn't sit in the LLM transcript."""
-    import os, stat
+    """With the opt-in, the password is in the response and nothing is
+    written to disk."""
+    import tempfile
     monkeypatch.setenv("EDGELENS_MCP_REVEAL_SECRETS", "1")
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     fake_session = _ready_session()
     fake_session.device.ssh.return_value = MagicMock(
         user="recamera", host="192.0.2.42", port=30007, password="hunter2",
@@ -397,19 +416,24 @@ def test_get_ssh_details_reveal_writes_password_file(
     _fresh_state.remember(fake_session)
 
     result = server.get_ssh_details()
-    path = result["password_file"]
-    try:
-        assert os.path.exists(path)
-        with open(path) as f:
-            assert f.read() == "hunter2"
-        # File mode 0o600 — only the owner can read.
-        mode = stat.S_IMODE(os.stat(path).st_mode)
-        assert mode == 0o600
-        # The MCP response body itself does NOT contain the cleartext.
-        assert "hunter2" not in result["password"]
-    finally:
-        if os.path.exists(path):
-            os.unlink(path)
+    assert result["password"] == "hunter2"
+    assert "password_file" not in result
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("value", ["0", "true", ""])
+def test_get_ssh_details_reveal_needs_exact_opt_in(
+    fake_client: MagicMock, _fresh_state: state.ServerState,
+    monkeypatch: pytest.MonkeyPatch, value: str,
+):
+    monkeypatch.setenv("EDGELENS_MCP_REVEAL_SECRETS", value)
+    fake_session = _ready_session()
+    fake_session.device.ssh.return_value = MagicMock(
+        user="recamera", host="192.0.2.42", port=30007, password="hunter2",
+    )
+    _fresh_state.remember(fake_session)
+
+    assert "hunter2" not in str(server.get_ssh_details())
 
 
 # ---- display ----------------------------------------------------------------

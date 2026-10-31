@@ -21,7 +21,7 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
-    "edgelens-sdk>=0.2.2,<0.3",
+    "edgelens-sdk>=0.2.4,<0.3",
     "robotframework>=6.0",
 ]
 

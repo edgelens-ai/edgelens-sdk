@@ -26,7 +26,7 @@ The first test pays the flash cost; subsequent tests reuse it.
 | Flag | Default | Purpose |
 |---|---|---|
 | `--edgelens-key` | — | API key. Prefer `$EDGELENS_API_KEY`: a value on the command line is visible in the process list and shell history. |
-| `--edgelens-base-url` | — | Self-hosted EdgeLens deployments. |
+| `--edgelens-base-url` | — | Override the API base URL. |
 | `--edgelens-os` | `stock-os` | OS to flash. Alt: `recamagined`. |
 | `--edgelens-device-type` | `recamera-2002` | Device type to allocate. |
 | `--edgelens-scope` | `session` | `session` / `module` / `function`. |
@@ -35,7 +35,8 @@ The first test pays the flash cost; subsequent tests reuse it.
 
 `wait_ready` needs no client-side timeout knob: the platform commits
 to a readiness deadline on the session response and the SDK trusts
-it. Stuck sessions surface with the platform's own error reason on
+it, up to a client-side maximum of 30 minutes, so a deadline the
+api keeps extending cannot hang the run. Stuck sessions surface with the platform's own error reason on
 the next poll after the deadline + grace, not with a generic
 `TimeoutError`. `--edgelens-wait-timeout` still exists as a deprecated
 escape hatch for testing / abort-early, but you shouldn't need it in
@@ -153,5 +154,5 @@ readable but not executable: make a deployed binary executable
 
 ## Example project
 
-Full working project: [`examples/pytest/`](../../examples/pytest/).
-Clone the repo, set `EDGELENS_API_KEY`, and `pytest` runs.
+Minimal working project: [`examples/pytest-basic/`](../../examples/pytest-basic/).
+Install its requirements, set `EDGELENS_API_KEY`, and `pytest` runs.

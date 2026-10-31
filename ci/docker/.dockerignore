@@ -23,7 +23,5 @@ examples
 skills
 ci/github-action
 ci/gitlab
-core/go
 integrations/k6
 integrations/robot
-integrations/pytest

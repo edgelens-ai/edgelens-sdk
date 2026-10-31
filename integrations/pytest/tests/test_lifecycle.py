@@ -122,9 +122,8 @@ def test_allocate_swallows_release_error_when_wait_ready_fails(
 # The wait prints nothing and can run for half an hour, so the likeliest
 # way it ever ends early is an operator pressing Ctrl-C at a silent
 # terminal. KeyboardInterrupt is not an Exception, so a guard written to
-# stop a session leaking will miss the only trigger anyone has actually
-# seen it need — and the cost is the device held until the server-side
-# timeout, on a bench with one usable camera.
+# stop a session leaking would miss the likeliest trigger — and the cost
+# is the device held until the server-side timeout.
 #
 # Every test below asserts that the release happened, not merely that the
 # interrupt arrived. The interrupt arrives either way: it is raised inside
@@ -132,11 +131,8 @@ def test_allocate_swallows_release_error_when_wait_ready_fails(
 # the way out. Only the release call distinguishes a guard that fired from
 # one that was never entered.
 #
-# These were checked by removing the guard and running them, which is the
-# only way to know an assertion can fail. A test that still passes with
-# the thing it pins removed is making no claim about it — and the pass
-# column is the only place that shows, which is how two tests that could
-# not fail survived a round of review here.
+# Each fails when the guard is removed: a test that still passes with the
+# thing it pins removed is making no claim about it.
 
 
 @pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit])

@@ -136,7 +136,7 @@ Match the test to what they asked for, not what's interesting:
 | HTTP 429 from `create_session` | `max_concurrent_sessions` is full. Release prior sessions or upgrade the plan. |
 | HTTP 410 from `device.*` | Session already released. Stop using the stale `device`; start a fresh session. |
 | HTTP 400 with `private` in detail | You passed a URL that DNS-resolves to a private IP. The platform blocks SSRF — use a public-internet URL. |
-| HTTP 422 with `extra fields not permitted` | The request model has `extra="forbid"`. Drop the unknown key. |
+| HTTP 422 with `extra fields not permitted` | The API rejects fields it does not define. Drop the unknown key. |
 
 Always surface the full error chain — don't `try/except: pass` to make output cleaner.
 

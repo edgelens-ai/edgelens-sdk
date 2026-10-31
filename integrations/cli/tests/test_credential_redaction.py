@@ -32,18 +32,14 @@ def _assert_no_key_run(haystack: str, key: str = FAKE_KEY, n: int = 8) -> None:
     assert not leaked, f"{len(leaked)} run(s) of the key survived: {leaked[:3]}"
 
 
-# Constants, deliberately. The input key is fixed, so the expected
-# output is a constant and writing it as one is the whole control: an
-# expectation computed by the same algorithm as the code moves when the
-# code moves, and a diff touching both sides passes in silence. A
-# literal forces that edit into the open.
-#
-# For FAKE_KEY: sha256(whole)[:6] is the mask; sha256(first 8)[:6] is
-# what a digest-of-a-fragment would print; the plain prefix is what a
-# truncation would print. All three differ, so one literal rules out
-# both wrong constructions.
-EXPECTED_MASK = "<set sha256:90aa62>"
+# A literal, deliberately: an expectation computed by the same code as
+# the mask moves when the code moves. FRAGMENT_DIGEST and
+# WHOLE_KEY_DIGEST are six hex characters of sha256 over the key's first
+# eight characters and over the whole key; PLAIN_PREFIX is what a
+# truncation would print. None of them may appear.
+EXPECTED_MASK = "<set>"
 FRAGMENT_DIGEST = "716cab"
+WHOLE_KEY_DIGEST = "90aa62"
 PLAIN_PREFIX = "el_liv"
 
 
@@ -51,16 +47,17 @@ def test_repr_pins_the_exact_mask():
     assert f"api_key={EXPECTED_MASK}" in repr(Config(api_key=FAKE_KEY))
 
 
-def test_repr_shows_neither_a_fragment_digest_nor_a_prefix():
-    """The two constructions the absence check alone would let through.
+def test_repr_shows_no_digest_and_no_prefix():
+    """The constructions the absence check alone would let through.
 
     A six-character prefix is shorter than the eight-character run the
-    absence test searches for, and a digest of the key's first eight
-    characters is a digest of a fragment. Both disclose part of the
-    secret; both pass an absence-only check.
+    absence test searches for, and a short digest of the key or of a
+    fragment of it confirms a guessed key offline. All of them pass an
+    absence-only check.
     """
     text = repr(Config(api_key=FAKE_KEY))
     assert FRAGMENT_DIGEST not in text
+    assert WHOLE_KEY_DIGEST not in text
     assert PLAIN_PREFIX not in text
 
 
@@ -72,10 +69,11 @@ def test_repr_marks_an_absent_key_as_none():
     assert "api_key=None" in repr(Config(api_key=None))
 
 
-def test_repr_distinguishes_two_different_keys():
+def test_repr_is_the_same_for_two_different_keys():
+    """Nothing in the output depends on which key is set."""
     a = repr(Config(api_key=FAKE_KEY))
     b = repr(Config(api_key="el_live_" + "B" * 43))
-    assert a != b, "two different keys render identically — an operator cannot tell which key is wrong"
+    assert a == b
 
 
 def test_repr_still_shows_the_base_url():

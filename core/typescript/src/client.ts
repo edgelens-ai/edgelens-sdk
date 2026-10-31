@@ -17,7 +17,13 @@
  */
 
 import { AuthenticationError } from "./errors.js";
-import { DEFAULT_BASE_URL, HTTPClient, RetryPolicy, type RetryPolicyOptions } from "./http.js";
+import {
+  DEFAULT_BASE_URL,
+  HTTPClient,
+  RetryPolicy,
+  sessionPath,
+  type RetryPolicyOptions,
+} from "./http.js";
 import { Session } from "./session.js";
 import type { DeviceType, OSType, SessionResponse } from "./types.js";
 
@@ -31,11 +37,16 @@ export interface EdgeLensClientOptions {
   userAgent?: string;
   /** Inject a custom fetch (tests / proxies). Defaults to global fetch. */
   fetch?: typeof fetch;
-  /**
-   * Allow non-https baseUrl. Default
-   * false. Forwarded to HTTPClient.
-   */
+  /** Allow an http:// baseUrl. Default false. Forwarded to HTTPClient. */
   allowInsecureBaseUrl?: boolean;
+  /**
+   * Allow a loopback/private baseUrl host for a server you control, for
+   * example a local test server. Defaults to `EDGELENS_ALLOW_PRIVATE_BASE_URL`. Forwarded to
+   * HTTPClient.
+   */
+  allowPrivateBaseUrl?: boolean;
+  /** Largest response body to buffer. Forwarded to HTTPClient. */
+  maxResponseBytes?: number;
 }
 
 export interface CreateSessionOptions {
@@ -70,8 +81,12 @@ export class EdgeLensClient {
       ...(retry ? { retryPolicy: retry } : {}),
       ...(opts.userAgent !== undefined ? { userAgent: opts.userAgent } : {}),
       ...(opts.fetch ? { fetch: opts.fetch } : {}),
-      ...(opts.allowInsecureBaseUrl
-        ? { allowInsecureBaseUrl: true }
+      ...(opts.allowInsecureBaseUrl ? { allowInsecureBaseUrl: true } : {}),
+      ...(opts.allowPrivateBaseUrl !== undefined
+        ? { allowPrivateBaseUrl: opts.allowPrivateBaseUrl }
+        : {}),
+      ...(opts.maxResponseBytes !== undefined
+        ? { maxResponseBytes: opts.maxResponseBytes }
         : {}),
     });
   }
@@ -97,7 +112,7 @@ export class EdgeLensClient {
 
   /** Retrieve an existing session by id. */
   async getSession(sessionId: string): Promise<Session> {
-    const data = await this.http.get<SessionResponse>(`/v1/sessions/${sessionId}`);
+    const data = await this.http.get<SessionResponse>(sessionPath(sessionId));
     return Session.fromApi(this.http, data);
   }
 }

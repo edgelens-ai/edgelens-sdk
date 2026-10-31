@@ -48,7 +48,7 @@ The SDK enum `OSType.STOCK` has value `"stock-os"` — never write
 - `session.wait_ready()` before touching `session.device`.
 - Catch only `edgelens.errors.*` (EdgeLensError, SessionError, AuthenticationError, DeviceError, TimeoutError) — never bare `Exception`.
 - One assertion per acceptance criterion; don't bundle.
-- For self-hosted EdgeLens, pass `base_url=` to the client.
+- To use a different API base URL, pass `base_url=` to the client.
 
 # Anti-patterns — do not generate
 

@@ -46,7 +46,7 @@ Library    EdgeLensLibrary    api_key=%{EDGELENS_API_KEY}    scope=TEST
 
 | Keyword | What |
 |---|---|
-| `Request Device    device_type=...    os=...    timeout=...    wait_timeout=300` | Allocate and block until `status=ready`. Returns the session id. |
+| `Request Device    device_type=...    os=...    timeout=...    wait_timeout=300` | Allocate and block until `status=ready`. Returns the session id. Fails while an earlier session is still active; `Release Device` it first. |
 | `Release Device` | Release. Safe in `[Teardown]` when no session was allocated. |
 | `Get Session Id` | Id of the active session. |
 | `Get Session Status` | Current session status. |

@@ -87,6 +87,6 @@ Thumbs.db
 *.pem
 *.key
 
-# Demo run output. These are photographs taken by a device in a rack, so
-# they show whatever the sensor was pointed at — never commit them here.
+# Example run output. Captures from a device show whatever its sensor was
+# pointed at — never commit them.
 examples/*/artifacts/

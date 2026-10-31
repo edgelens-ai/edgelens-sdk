@@ -12,7 +12,7 @@ empty.
 
 from __future__ import annotations
 
-import hashlib
+import errno
 import json
 import os
 from dataclasses import asdict, dataclass, field
@@ -25,17 +25,13 @@ CONFIG_PATH = DEFAULT_DIR / "config.json"
 STATE_PATH = DEFAULT_DIR / "state.json"
 
 
-def _fingerprint(api_key: Optional[str]) -> str:
-    """Render a key so two different keys look different and neither is readable.
+def _mask(api_key: Optional[str]) -> str:
+    """Say whether a key is set, and nothing else about it.
 
-    A prefix of a secret is a piece of the secret, so the mask is a
-    one-way digest rather than a truncation: six hex characters of
-    sha256 identify a key to someone who already holds it and give
-    nothing to someone who does not.
+    Any value derived from the key, a prefix or a digest alike, lets
+    whoever reads the output confirm a guessed key offline.
     """
-    if api_key is None:
-        return "None"
-    return f"<set sha256:{hashlib.sha256(api_key.encode()).hexdigest()[:6]}>"
+    return "None" if api_key is None else "<set>"
 
 
 @dataclass
@@ -48,7 +44,7 @@ class Config:
         # terminal or CI log; `asdict` is unaffected, so what gets
         # persisted to config.json does not change.
         return (
-            f"Config(api_key={_fingerprint(self.api_key)}, "
+            f"Config(api_key={_mask(self.api_key)}, "
             f"base_url={self.base_url!r})"
         )
 
@@ -69,14 +65,16 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:
-    """Atomic create with 0o600 in a
-    single syscall instead of write-then-chmod.
+    """Write ``data`` to ``path``, owner-only (0o600) on every write.
 
-    Creating the file with default perms and chmod-ing it afterwards
-    would leave a TOCTOU window in which another user on a multi-user
-    host could read the API key.
-    ``os.open(path, O_WRONLY|O_CREAT|O_TRUNC, 0o600)`` creates the
-    file with 0o600 atomically, so that window never exists.
+    ``os.open(path, O_WRONLY|O_CREAT|O_TRUNC, 0o600)`` creates a new
+    file as 0o600 in one syscall, so there is no window between create
+    and chmod in which another user on a multi-user host could read the
+    API key. The mode argument only applies when the file is created,
+    though: an existing file (copied in, or written by another tool under
+    a looser umask) keeps its mode. So the open file is also fchmod-ed to
+    0o600 before anything is written into it. O_NOFOLLOW refuses a
+    symlink planted at the path. A new parent directory is created 0o700.
     When os.chmod is the only available knob (Windows, overlay FS,
     network shares), emit a clear warning so the operator knows the
     config file may not be owner-restricted.
@@ -84,14 +82,18 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
     import logging as _logging
     _log = _logging.getLogger(__name__)
 
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     body = json.dumps(data, indent=2)
 
     try:
         fd = os.open(
-            str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+            str(path),
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
         )
-    except OSError:
+    except OSError as e:
+        if e.errno == errno.ELOOP:
+            raise
         # Windows / overlay paths where O_CREAT with mode is unsupported.
         # Fall back to write_text + best-effort chmod, but loudly.
         _log.warning(
@@ -102,14 +104,16 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
         path.write_text(body)
         try:
             os.chmod(path, 0o600)
-        except OSError as e:
+        except OSError as chmod_err:
             _log.warning(
                 "%s: chmod 0o600 also failed: %s. The API key in this "
-                "file may be readable by other local users.", path, e,
+                "file may be readable by other local users.", path, chmod_err,
             )
         return
 
     with os.fdopen(fd, "w") as f:
+        if hasattr(os, "fchmod"):
+            os.fchmod(f.fileno(), 0o600)
         f.write(body)
 
 

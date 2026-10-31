@@ -19,7 +19,7 @@ Pick the one you already use; you do not need to change runners to use EdgeLens.
 
 ## CI/CD
 
-- **[GitHub Actions](./ci-cd/github-actions.md)** — the `edgelens-ai/edgelens-sdk/ci/github-action` action plus self-hosted recipes.
+- **[GitHub Actions](./ci-cd/github-actions.md)** — the `edgelens-ai/edgelens-sdk/ci/github-action` action and its recipes.
 - **[GitLab CI](./ci-cd/gitlab-ci.md)** — `.gitlab-ci.yml` templates from `ci/gitlab/`.
 
 ## Experiment tracking

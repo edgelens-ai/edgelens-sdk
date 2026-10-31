@@ -1,14 +1,14 @@
 # EdgeLens GitHub Action
 
-Used as `edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2`, a subpath of
+Used as `edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4`, a subpath of
 this repository.
 
 GitHub Action that runs your EdgeLens test command in the pre-built
 [`edgelensai/edgelens-sdk`](../docker) image, uploads artifacts, posts a PR
 comment summary, and writes to the Step Summary.
 
-Composite action — works on any GitHub-hosted Linux runner (and any
-self-hosted one with `docker` available).
+Composite action — works on any GitHub-hosted Linux runner, and on any
+Linux runner you operate that has `docker` available.
 
 ## Quick start
 
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
+      - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4
         with:
           api-key: ${{ secrets.EDGELENS_API_KEY }}
           command: pytest --junit-xml=junit.xml
@@ -40,26 +40,26 @@ side via `@edgelens/core` + `@edgelens/playwright-plugin`.
 ### Playwright
 
 ```yaml
-- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
+- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4
   with:
     api-key: ${{ secrets.EDGELENS_API_KEY }}
     command: npx playwright test --reporter=junit
 ```
 
-### Self-hosted EdgeLens
+### Override the API base URL
 
 ```yaml
-- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
+- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4
   with:
     api-key: ${{ secrets.EDGELENS_API_KEY }}
-    base-url: https://edgelens.internal.acme.com
+    base-url: https://api.example.com
     command: pytest --junit-xml=junit.xml
 ```
 
 ### Extra env into the container
 
 ```yaml
-- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
+- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4
   with:
     api-key: ${{ secrets.EDGELENS_API_KEY }}
     command: pytest
@@ -71,10 +71,10 @@ side via `@edgelens/core` + `@edgelens/playwright-plugin`.
 ### Pin a specific image version
 
 ```yaml
-- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
+- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4
   with:
     api-key: ${{ secrets.EDGELENS_API_KEY }}
-    image: edgelensai/edgelens-sdk:0.2.2
+    image: edgelensai/edgelens-sdk:0.2.4
     command: pytest --junit-xml=junit.xml
 ```
 
@@ -84,7 +84,7 @@ side via `@edgelens/core` + `@edgelens/playwright-plugin`.
 |---|---|---|---|
 | `api-key` | yes | — | EdgeLens API key. Pass via a secret. |
 | `command` | no | `pytest` | Command run inside the container. |
-| `image` | no | `edgelensai/edgelens-sdk:0.2.2` | Docker image tag. The default is the image released with this version of the action. |
+| `image` | no | `edgelensai/edgelens-sdk:0.2.4` | Docker image tag. The default is the image released with this version of the action. |
 | `working-directory` | no | `.` | Repo-relative dir to run in. |
 | `artifacts-path` | no | `test-results,playwright-report,coverage,junit.xml` | Glob list of artifacts to upload. Empty disables upload. |
 | `artifacts-retention-days` | no | `14` | Days to keep uploaded artifacts. |
@@ -118,7 +118,7 @@ image. Reference the action by its exact release tag, for example
 tag.
 
 The action's default `image` is the image released with the same version,
-`edgelensai/edgelens-sdk:0.2.2` for `@v0.1.0`. To guard against a
+`edgelensai/edgelens-sdk:0.2.4` for `@v0.1.0`. To guard against a
 re-pushed tag, pin the digest as well through the `image` input.
 
 Depends on the CI image in [`ci/docker/`](../docker).

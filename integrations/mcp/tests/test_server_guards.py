@@ -111,7 +111,7 @@ def test_exec_command_allowed_when_opted_in(reload_server, monkeypatch):
     monkeypatch.setattr(server, "_require_ready", lambda _sid: _ready_session())
     out = server.exec_command(command="uname -a")
     assert out["exit_code"] == 0
-    assert out["stdout"] == "ok"
+    assert out["stdout"] == "<untrusted-device-output>ok</untrusted-device-output>"
 
 
 # ---- deploy_model path-jail ------------------------

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Release lint that refuses to publish a non-digest-pinned edgelensai/edgelens-sdk
-# image: every FROM line must carry @sha256:<64 hex>, and the k6 checksum
-# must be a real value.
+# image: every FROM line, and a `# syntax=` directive if there is one, must
+# carry @sha256:<64 hex>, and the k6 checksum must be a real value.
 #
 # Run from CI on the tag-push job:
 #   ./ci/docker/check-release-pins.sh ci/docker/Dockerfile ci/github-action/action.yml
@@ -27,6 +27,15 @@ if [ -n "$unpinned" ]; then
     echo "$unpinned" | while IFS= read -r line; do
         echo "::error::$DOCKERFILE FROM line not pinned by @sha256 digest: $line"
     done
+    errors=$((errors+1))
+fi
+# A `# syntax=` directive makes BuildKit fetch and run that frontend image,
+# so it is held to the same digest pin as a FROM line.
+unpinned_syntax=$(grep -niE '^#[[:space:]]*syntax[[:space:]]*=' "$DOCKERFILE" \
+    | grep -vE '@sha256:[0-9a-f]{64}[[:space:]]*$' \
+    || true)
+if [ -n "$unpinned_syntax" ]; then
+    echo "::error::$DOCKERFILE syntax directive not pinned by @sha256 digest: $unpinned_syntax"
     errors=$((errors+1))
 fi
 if grep -q 'TODO(release):' "$DOCKERFILE"; then

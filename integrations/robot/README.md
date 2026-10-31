@@ -43,7 +43,7 @@ EDGELENS_API_KEY=el_test_xxx robot tests/
 
 | Keyword | Arguments | Returns |
 |---|---|---|
-| `Request Device` | `device_type=recamera-2002`, `os=stock-os`, `timeout=3600`, `wait_timeout=300` | Session id |
+| `Request Device` | `device_type=recamera-2002`, `os=stock-os`, `timeout=3600`, `wait_timeout=300` | Session id. Fails while an earlier session is still active. |
 | `Release Device` | — | (no-op if no session) |
 | `Get Session Id` | — | Session id |
 | `Get Session Status` | — | Refreshes + returns status string |
@@ -95,7 +95,7 @@ Library    EdgeLensLibrary    scope=GLOBAL   # one camera across the whole run
 | Argument | Default | Purpose |
 |---|---|---|
 | `api_key` | `%{EDGELENS_API_KEY}` | API key. Pass via env or library import. |
-| `base_url` | — | Self-hosted EdgeLens deployments. |
+| `base_url` | — | Override the API base URL. |
 | `scope` | `SUITE` | `SUITE` / `TEST` / `GLOBAL`. |
 
 ## CI
@@ -106,7 +106,7 @@ in and you're set:
 ### GitHub Actions
 
 ```yaml
-- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
+- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4
   with:
     api-key: ${{ secrets.EDGELENS_API_KEY }}
     command: robot --output output.xml tests/
@@ -117,7 +117,7 @@ in and you're set:
 
 ```yaml
 include:
-  - remote: "https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/main/ci/gitlab/edgelens.gitlab-ci.yml"
+  - remote: "https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/v0.2.4/ci/gitlab/edgelens.gitlab-ci.yml"
 
 edgelens-robot:
   extends: .edgelens:robot

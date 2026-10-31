@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
+      - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4
         with:
           api-key: ${{ secrets.EDGELENS_API_KEY }}
           command: pytest tests/hardware/ --junit-xml=junit.xml
@@ -35,13 +35,13 @@ Add `EDGELENS_API_KEY` to your repository secrets first
 |---|---|---|
 | `api-key` | — | **Required.** EdgeLens API key. Pass via a secret, never in YAML. |
 | `command` | `pytest` | Test command to run inside the container. |
-| `image` | `edgelensai/edgelens-sdk:0.2.2` | Docker image to run the test command in. The default is a pinned tag; pin a version and digest in your own workflow. |
+| `image` | `edgelensai/edgelens-sdk:0.2.4` | Docker image to run the test command in. The default is a pinned tag; pin a version and digest in your own workflow. |
 | `working-directory` | `.` | Repo-relative directory to run the command from. |
 | `artifacts-path` | `test-results,playwright-report,coverage,junit.xml` | Comma-separated globs of test artifacts to upload. Empty disables upload. |
 | `artifacts-retention-days` | `14` | Days to retain uploaded artifacts. |
 | `junit-file` | `junit.xml` | Path to a JUnit XML file used to compute the summary. Optional; falls back to exit code. |
 | `comment-on-pr` | `true` | Post a summary comment on the PR. No-op outside `pull_request` events. |
-| `base-url` | `""` | Override the EdgeLens platform API base URL (self-hosted deployments). |
+| `base-url` | `""` | Override the EdgeLens platform API base URL. |
 | `extra-env` | `""` | Multiline `KEY=value` pairs to inject into the container env. |
 
 ## Matrix builds (one job per OS)
@@ -52,7 +52,7 @@ strategy:
     os: [stock-os, recamagined]
 steps:
   - uses: actions/checkout@v4
-  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
+  - uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4
     with:
       api-key: ${{ secrets.EDGELENS_API_KEY }}
       command: pytest tests/hardware/ --edgelens-os=${{ matrix.os }} --junit-xml=junit.xml
@@ -123,15 +123,15 @@ Common failure → cause mapping:
 | `TimeoutError: status never reached ready` | The session did not reach `ready` within its server-side deadline. Read the session's `error` field (`GET /v1/sessions/{id}`). |
 | `429 max_concurrent_sessions` | Matrix is too wide for the key's cap. |
 
-## Self-hosted runners
+## Overriding the API base URL
 
-Set `base-url` to point at your self-hosted EdgeLens deployment:
+Set `base-url` to send the SDK's requests to a different API base URL:
 
 ```yaml
-- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.2
+- uses: edgelens-ai/edgelens-sdk/ci/github-action@v0.2.4
   with:
     api-key: ${{ secrets.EDGELENS_API_KEY }}
-    base-url: https://edgelens.internal.corp
+    base-url: https://api.example.com
     command: pytest tests/hardware/ --junit-xml=junit.xml
 ```
 

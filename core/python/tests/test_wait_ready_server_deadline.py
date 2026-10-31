@@ -25,7 +25,7 @@ from edgelens.session import _parse_deadline
 @pytest.mark.parametrize(
     "raw",
     [
-        "2026-08-30T15:47:58",         # naive — bare (SQLite dev round-trip)
+        "2026-08-30T15:47:58",         # naive — bare, no tz suffix
         "2026-08-30T15:47:58Z",        # tz-aware — Z-suffixed
         "2026-08-30T15:47:58+00:00",   # tz-aware — offset
         "2026-08-30T15:47:58.123456",  # naive with microseconds
@@ -61,7 +61,7 @@ def test_refresh_survives_naive_and_aware_deadline_mix(httpx_mock):
     this mix: both sides are coerced to tz-aware by _parse_deadline."""
     deadline_dt = datetime.now(timezone.utc) + timedelta(minutes=15)
     z_suffixed = deadline_dt.isoformat().replace("+00:00", "Z")
-    # Emulate SQLite's naive round-trip: same wall-clock, no tz suffix.
+    # A naive deadline: same wall-clock, no tz suffix.
     naive_wire = deadline_dt.replace(tzinfo=None).isoformat()
 
     httpx_mock.add_response(
@@ -164,8 +164,8 @@ def test_wait_ready_raises_session_error_when_platform_stuck_past_grace(
 
 def test_wait_ready_grace_lets_platform_error_surface(httpx_mock):
     """within the grace period past the server deadline, the SDK
-    keeps polling so the platform's own ERROR (with its actual reason
-    from db.error_message) surfaces — instead of the SDK raising a
+    keeps polling so the platform's own ERROR (with its actual reason)
+    surfaces — instead of the SDK raising a
     speculative SessionError that loses the real cause."""
     past = datetime.now(timezone.utc) - timedelta(seconds=1)
     httpx_mock.add_response(

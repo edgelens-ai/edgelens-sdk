@@ -54,7 +54,7 @@ the string `"stock"` (defunct legacy spelling).
 - `session.wait_ready()` before touching `session.device`.
 - One assertion per acceptance criterion.
 - Catch only `edgelens.errors.{EdgeLensError, SessionError, AuthenticationError, DeviceError, TimeoutError}`.
-- For self-hosted EdgeLens deployments, pass `base_url=` to the client.
+- To use a different API base URL, pass `base_url=` to the client.
 
 ## Do not generate
 

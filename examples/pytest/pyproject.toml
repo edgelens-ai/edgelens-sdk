@@ -1,5 +1,0 @@
-[tool.pytest.ini_options]
-addopts = "--strict-markers"
-markers = [
-    "edgelens(os=...): pin a test to a specific OS tier",
-]

@@ -1,4 +1,5 @@
-# The image `make test` (typescript half) runs core/typescript/tests in.
+# The image `make test` (typescript half) runs core/typescript/tests and
+# integrations/playwright/tests in.
 #
 # WHY A SEPARATE FILE AND A SEPARATE IMAGE.
 #
@@ -8,18 +9,26 @@
 # purpose. See the Dockerfile.test header for the reason both files sit at
 # this layer rather than as stages in a shipped Dockerfile.
 #
-# WHY node_modules IS BAKED, NOT MOUNTED.
+# WHY node_modules IS BAKED AND THE SOURCES ARE MOUNTED.
 #
 # The sibling Python image can bind-mount its live tree because an editable
 # pip install writes .pth entries that resolve through the mount at run
 # time. Node has no such indirection: vitest resolves imports by scanning
-# node_modules relative to the test file, and a read-only bind-mount of the
-# repo over the baked image would hide the installed modules behind the
-# host's (empty) node_modules. The alternative -- a volume that smuggles
-# node_modules back in -- is more moving parts to achieve nothing: the
-# TypeScript tree is small (src/ + tests/), the suite is small, and a
-# `make test-rebuild` is cheap. Code edits on the typescript side therefore
-# want `make test-rebuild`; this is documented in the Makefile.
+# node_modules relative to the test file, and a read-only bind-mount of a
+# whole package over the baked image would hide the installed modules
+# behind the host's node_modules (absent, or built for another platform).
+# So node_modules stays in the image, and the Makefile mounts only src/,
+# tests/, vitest.config.ts and core/testdata/ over the copies baked below.
+# The baked copies make the image runnable on its own; the mounts make the
+# Makefile's test run exercise the working tree. A package.json or lockfile
+# change wants `make test-rebuild`.
+#
+# TWO PACKAGES, ONE TREE.
+#
+# The tree under /sdk mirrors the repo, so the Playwright plugin's
+# `file:../../core/typescript` devDependency resolves to the core package
+# beside it, and its vitest config points @edgelens/core at the core
+# sources.
 
 FROM docker.io/library/node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
 
@@ -37,27 +46,37 @@ FROM docker.io/library/node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a9423
 # `vitest.config.ts` to -- compiles the config to a sibling
 # `vitest.config.ts.timestamp-<nanos>.mjs` and refuses to proceed if it
 # cannot (measured: `EACCES: permission denied, open ... .timestamp-...mjs`).
-# Everything the suite needs to WRITE lives under /ts, so owning the tree
-# with the running user is the straight fix. --network none at test time
-# makes the write-to-the-tree surface small on purpose: there is no shared
-# node_modules cache, no --prefix outside /ts, and the whole suite is in
-# this one directory.
-WORKDIR /ts
-RUN chown node:node /ts
+# Everything the suite needs to WRITE lives under /sdk, so owning the tree
+# with the running user is the straight fix; the package directories are
+# made by that user before anything is copied into them, because a
+# directory COPY creates implicitly is owned by root. --network none at
+# test time makes the write-to-the-tree surface small on purpose: there is
+# no shared node_modules cache, no --prefix outside /sdk, and the whole
+# suite is in this one tree.
+WORKDIR /sdk
+RUN chown node:node /sdk
 USER node
+RUN mkdir -p /sdk/core/typescript /sdk/core/testdata /sdk/integrations/playwright
 
-COPY --chown=node:node core/typescript/package.json /ts/package.json
-COPY --chown=node:node core/typescript/package-lock.json /ts/package-lock.json
-RUN npm ci --no-audit --no-fund
+COPY --chown=node:node core/typescript/package.json core/typescript/package-lock.json /sdk/core/typescript/
+RUN cd /sdk/core/typescript && npm ci --no-audit --no-fund
 
-# The test sources themselves. node_modules stays in /ts (above) and the
-# config files are read where they are copied; vitest.config.ts points at
-# `tests/**/*.test.ts`.
-COPY --chown=node:node core/typescript/src /ts/src
-COPY --chown=node:node core/typescript/tests /ts/tests
-COPY --chown=node:node core/typescript/vitest.config.ts /ts/vitest.config.ts
-COPY --chown=node:node core/typescript/tsconfig.json /ts/tsconfig.json
+# After core: the plugin's lockfile links @edgelens/core to ../../core/typescript.
+COPY --chown=node:node integrations/playwright/package.json integrations/playwright/package-lock.json /sdk/integrations/playwright/
+RUN cd /sdk/integrations/playwright && npm ci --no-audit --no-fund
 
-# No ENTRYPOINT. The Makefile picks the command; the image has `vitest`
-# installed under /ts/node_modules/.bin and `npm test` runs it.
+# The test sources themselves, so the image runs on its own; the Makefile
+# mounts the working tree's copies over them. Each vitest.config.ts points
+# at its package's `tests/**/*.test.ts`.
+COPY --chown=node:node core/testdata /sdk/core/testdata
+COPY --chown=node:node core/typescript/src /sdk/core/typescript/src
+COPY --chown=node:node core/typescript/tests /sdk/core/typescript/tests
+COPY --chown=node:node core/typescript/vitest.config.ts core/typescript/tsconfig.json /sdk/core/typescript/
+COPY --chown=node:node integrations/playwright/src /sdk/integrations/playwright/src
+COPY --chown=node:node integrations/playwright/tests /sdk/integrations/playwright/tests
+COPY --chown=node:node integrations/playwright/vitest.config.ts integrations/playwright/tsconfig.json /sdk/integrations/playwright/
+
+# No ENTRYPOINT. The Makefile picks the package (-w) and the command; each
+# package has `vitest` under its node_modules/.bin and `npm test` runs it.
+WORKDIR /sdk/core/typescript
 CMD ["npm", "test"]

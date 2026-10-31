@@ -8,7 +8,7 @@ The EdgeLens monorepo ships `.gitlab-ci.yml` templates under
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/main/ci/gitlab/edgelens.gitlab-ci.yml
+  - remote: https://raw.githubusercontent.com/edgelens-ai/edgelens-sdk/v0.2.4/ci/gitlab/edgelens.gitlab-ci.yml
 
 hardware_tests:
   extends: .edgelens:pytest
@@ -18,6 +18,11 @@ hardware_tests:
 
 Set `EDGELENS_API_KEY` as a masked + protected CI/CD variable in
 **Settings → CI/CD → Variables**.
+
+Include the template from a release tag, as above, never from a branch:
+GitLab fetches a remote include again for every pipeline, so a branch ref
+runs whatever that branch holds at the time, with your API key in the job.
+The tag also fixes the default image (`edgelensai/edgelens-sdk:0.2.4`).
 
 ## Templates available
 
@@ -43,8 +48,8 @@ The templates accept these:
 | Variable | Default | Purpose |
 |---|---|---|
 | `EDGELENS_API_KEY` | — | **Required.** Bearer token. Mask + protect it. |
-| `EDGELENS_BASE_URL` | (default) | Self-hosted deployments. Honored directly by the SDK. |
-| `EDGELENS_IMAGE` | `edgelensai/edgelens-sdk:latest` | CI image. Pin a version in production. |
+| `EDGELENS_BASE_URL` | (default) | Override the API base URL. Honored directly by the SDK. |
+| `EDGELENS_IMAGE` | `edgelensai/edgelens-sdk:0.2.4` | CI image. Defaults to the image released with the template, never `:latest`. |
 | `JUNIT_FILE` | `junit.xml` (pytest) / `results.xml` (Playwright) / `output.xml` (Robot) | Path to the JUnit XML report. |
 
 Device type and OS are test-runner options, not template variables:
@@ -53,8 +58,9 @@ other flags in [the pytest guide](../frameworks/pytest.md)).
 
 `wait_ready` no longer takes a client-side timeout knob: the platform
 signals the readiness deadline on the session response and the SDK
-trusts it. Sessions that never become ready are flipped to `ERROR`
-server-side; there is no `EDGELENS_WAIT_TIMEOUT` to tune.
+trusts it, up to a client-side maximum of 30 minutes. Sessions that
+never become ready are flipped to `ERROR` server-side; there is no
+`EDGELENS_WAIT_TIMEOUT` to tune.
 
 ## Matrix-style fanout
 

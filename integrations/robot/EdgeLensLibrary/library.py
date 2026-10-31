@@ -108,10 +108,18 @@ class EdgeLensLibrary:
         library instance — subsequent keywords (`Deploy Model`,
         `Execute On Device`, ...) target it implicitly.
 
+        Fails, allocating nothing, while a session from an earlier
+        `Request Device` is still active: call `Release Device` first.
+
         Example::
 
             Request Device    device_type=recamera-2002    os=stock-os
         """
+        if self._session is not None:
+            raise EdgeLensError(
+                f"Request Device called while session {self._session.id} is "
+                "still active. Call `Release Device` first."
+            )
         client = self._ensure_client()
         try:
             session = client.create_session(

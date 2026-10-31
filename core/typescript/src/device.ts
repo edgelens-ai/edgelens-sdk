@@ -6,7 +6,7 @@
  */
 
 import { DeviceError, EdgeLensTimeoutError } from "./errors.js";
-import { HTTPClient, opTimeoutMs } from "./http.js";
+import { HTTPClient, opTimeoutMs, sessionPath, type StreamOptions } from "./http.js";
 import type {
   DeviceConnection,
   DeviceInfo,
@@ -16,6 +16,7 @@ import type {
   OSType,
   SSHCredentials,
 } from "./types.js";
+import { withSecret } from "./secret.js";
 
 /** A file to upload: raw data, or data with the filename to give it on the device. */
 type DeployFile = Blob | { name: string; blob: Blob };
@@ -28,24 +29,24 @@ class DisplayController {
 
   /** Play a video on the display. Source can be a URL the platform can fetch. */
   async play(source: string, loop = false): Promise<void> {
-    await this.http.post(`/v1/sessions/${this.sessionId}/display/play`, {
+    await this.http.post(sessionPath(this.sessionId, "/display/play"), {
       json: { source, loop },
     });
   }
 
   /** Show a still image on the display. */
   async show(source: string): Promise<void> {
-    await this.http.post(`/v1/sessions/${this.sessionId}/display/show`, {
+    await this.http.post(sessionPath(this.sessionId, "/display/show"), {
       json: { source },
     });
   }
 
   async stop(): Promise<void> {
-    await this.http.post(`/v1/sessions/${this.sessionId}/display/stop`);
+    await this.http.post(sessionPath(this.sessionId, "/display/stop"));
   }
 
   async status(): Promise<{ ready: boolean; state: string; source: string | null }> {
-    return this.http.get(`/v1/sessions/${this.sessionId}/display/status`);
+    return this.http.get(sessionPath(this.sessionId, "/display/status"));
   }
 
   /** Wait for the display to settle into the requested state. */
@@ -78,24 +79,24 @@ class InferenceController {
 
   async start(): Promise<void> {
     this.checkSupported();
-    await this.http.post(`/v1/sessions/${this.sessionId}/inference/start`);
+    await this.http.post(sessionPath(this.sessionId, "/inference/start"));
   }
 
   async stop(): Promise<void> {
     this.checkSupported();
-    await this.http.post(`/v1/sessions/${this.sessionId}/inference/stop`);
+    await this.http.post(sessionPath(this.sessionId, "/inference/stop"));
   }
 
   /** Run one inference frame and return the result. */
   async once(): Promise<{ detections: unknown[]; frame_id: number; timestamp_ms: number }> {
     this.checkSupported();
-    return this.http.get(`/v1/sessions/${this.sessionId}/inference/once`);
+    return this.http.get(sessionPath(this.sessionId, "/inference/once"));
   }
 
   /** Current point-in-time metrics from a running inference. */
   async snapshot(): Promise<InferenceSnapshot> {
     this.checkSupported();
-    return this.http.get(`/v1/sessions/${this.sessionId}/inference/stats`);
+    return this.http.get(sessionPath(this.sessionId, "/inference/stats"));
   }
 
   /**
@@ -104,7 +105,7 @@ class InferenceController {
    */
   async run(durationS = 30, collectFrames = false): Promise<InferenceStats> {
     this.checkSupported();
-    return this.http.post(`/v1/sessions/${this.sessionId}/inference/results`, {
+    return this.http.post(sessionPath(this.sessionId, "/inference/results"), {
       json: { duration_s: durationS, collect_frames: collectFrames },
       timeoutMs: opTimeoutMs(this.http.timeoutMs, durationS),
     });
@@ -143,12 +144,15 @@ class InferenceController {
 export class Device {
   readonly display: DisplayController;
   readonly inference: InferenceController;
+  /** A copy whose ssh_password is non-enumerable, so printing a Device omits it. */
+  private readonly connection: DeviceConnection;
 
   constructor(
     private readonly http: HTTPClient,
     private readonly sessionId: string,
-    private readonly connection: DeviceConnection,
+    connection: DeviceConnection,
   ) {
+    this.connection = withSecret(connection, "ssh_password");
     this.display = new DisplayController(http, sessionId);
     this.inference = new InferenceController(http, sessionId, connection.os);
   }
@@ -193,7 +197,7 @@ export class Device {
     append("model", opts.model);
     if (opts.config) append("config", opts.config);
     (opts.files ?? []).forEach((file, i) => append(`file_${i}`, file));
-    return this.http.post(`/v1/sessions/${this.sessionId}/deploy`, { body: form });
+    return this.http.post(sessionPath(this.sessionId, "/deploy"), { body: form });
   }
 
   /**
@@ -201,25 +205,33 @@ export class Device {
    * The HTTP wait is extended to cover the requested command timeout.
    */
   async exec(command: string, timeoutS = 60): Promise<ExecResult> {
-    return this.http.post<ExecResult>(`/v1/sessions/${this.sessionId}/exec`, {
+    return this.http.post<ExecResult>(sessionPath(this.sessionId, "/exec"), {
       json: { command, timeout: timeoutS },
       timeoutMs: opTimeoutMs(this.http.timeoutMs, timeoutS),
     });
   }
 
-  /** Get SSH credentials for direct connection (no platform proxy). */
+  /**
+   * Get SSH credentials for direct connection (no platform proxy).
+   *
+   * `password` is non-enumerable: read it as `creds.password`. Logging,
+   * `JSON.stringify` or spreading the object leaves it out.
+   */
   ssh(): SSHCredentials {
-    return {
-      user: this.connection.ssh_user,
-      host: this.connection.host,
-      port: this.connection.ssh_port,
-      password: this.connection.ssh_password,
-    };
+    return withSecret(
+      {
+        user: this.connection.ssh_user,
+        host: this.connection.host,
+        port: this.connection.ssh_port,
+        password: this.connection.ssh_password,
+      },
+      "password",
+    );
   }
 
   /** Get the device info report (collect_device_info.sh output). */
   async info(): Promise<DeviceInfo> {
-    return this.http.get<DeviceInfo>(`/v1/sessions/${this.sessionId}/info`);
+    return this.http.get<DeviceInfo>(sessionPath(this.sessionId, "/info"));
   }
 
   /** Get the camera stream URL (stock OS only). */
@@ -230,19 +242,28 @@ export class Device {
       );
     }
     const data = await this.http.get<{ url: string }>(
-      `/v1/sessions/${this.sessionId}/stream`,
+      sessionPath(this.sessionId, "/stream"),
     );
     return data.url;
   }
 
-  /** Yield raw frame chunks from the device's stream (stock OS only). */
-  async *stream(): AsyncGenerator<Uint8Array, void, void> {
+  /**
+   * Yield raw frame chunks from the device's stream (stock OS only).
+   * Capped by default at 1 GiB and 600 s, and at the client timeout per
+   * chunk; see StreamOptions to change or disable a cap.
+   */
+  async *stream(opts: StreamOptions = {}): AsyncGenerator<Uint8Array, void, void> {
     if (this.os === "recamagined") {
       throw new DeviceError(
         "reCamaginedOS does not provide a built-in camera stream.",
       );
     }
-    yield* this.http.stream("GET", `/v1/sessions/${this.sessionId}/stream/raw`);
+    yield* this.http.stream(
+      "GET",
+      sessionPath(this.sessionId, "/stream/raw"),
+      undefined,
+      opts,
+    );
   }
 }
 

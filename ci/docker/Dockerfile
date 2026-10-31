@@ -1,52 +1,40 @@
-# syntax=docker/dockerfile:1.7
-#
 # edgelensai/edgelens-sdk — pre-built CI runner image for EdgeLens test pipelines.
 #
 # Includes:
-# - Python 3.12 + pytest + edgelens-sdk (Python SDK) + edgelens-cli
-# - Node 20 + Playwright + @edgelens/core + @edgelens/playwright-plugin
-# - k6 binary (xk6-edgelens extension lands later)
+# - Python 3.12 + pytest + edgelens-sdk + edgelens-cli + edgelens-pytest
+# - Node 22 + Playwright + @edgelens/core + @edgelens/playwright-plugin
+# - k6 binary
 #
 # Base: mcr.microsoft.com/playwright:v1.55.0-noble — Ubuntu 24.04 with
-# Chromium / Firefox / WebKit + Node 20 already installed. Keeps the
+# Chromium / Firefox / WebKit + Node 22 already installed. Keeps the
 # image multi-language without re-running `playwright install` at CI
 # start time.
 #
-# Build context is the edgelens-sdk repo root because we COPY across
-# core/* and integrations/*.
+# The SDK packages are the wheels and npm tarballs `make dist` built, the
+# same files the release publishes to PyPI and npm. `make image` checks
+# them against dist/SHA256SUMS and the commit in dist/BUILD_INFO, then
+# places them in the build context's dist/ directory, from which they are
+# bind-mounted for the install steps only. No sources, tests or build
+# dependencies reach the image.
 #
-#   # From edgelens-sdk root; tags and labels come from VERSION and HEAD:
+#   # From edgelens-sdk root, after `make dist`; the tag and labels come
+#   # from VERSION and HEAD:
 #   make image
-
-# ---- stage 1: build TypeScript packages ------------------------------------
+#
+# There is no `# syntax=` line: the builder's own Dockerfile frontend
+# builds this file (podman/buildah, and BuildKit's built-in frontend under
+# docker), so no frontend image is fetched at build time.
 #
 # Base images are pinned by the @sha256 digest of the multi-arch index,
 # not by floating tag. Keep the tag in front of the digest so the line
 # still says which release it is.
 #
-# Refresh procedure (both FROM lines, before each release): take the
+# Refresh procedure (every FROM line, before each release): take the
 # index digest for the tag, for example
 #   skopeo inspect --raw docker://<image>:<tag> | sha256sum
 # or the Docker-Content-Digest header the registry returns for the tag's
 # manifest.
-FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS ts-build
 
-WORKDIR /build
-COPY core/typescript ./core/typescript
-COPY integrations/playwright ./integrations/playwright
-
-# Core first — Playwright plugin's file: dep resolves once core has a dist.
-RUN cd core/typescript \
- && npm install --no-audit --no-fund \
- && npm run build
-
-RUN cd integrations/playwright \
- && npm install --no-audit --no-fund \
- && npm run build
-
-# ---- stage 2: final runtime ------------------------------------------------
-#
-# Same digest-pin discipline as stage 1.
 FROM mcr.microsoft.com/playwright:v1.55.0-noble@sha256:b27e719ecbfef153e13fd24e8341736733bf2658b229677eb21ff57ff5d7fb29
 
 # Python toolchain + curl (for the k6 download below).
@@ -59,7 +47,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3.12 -m venv /opt/edgelens/venv
 ENV PATH=/opt/edgelens/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # k6 binary, pinned by version and verified against the upstream sha256
 # before extract. A swapped tarball fails the build.
@@ -82,67 +71,34 @@ RUN curl -fsSL "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6
  && rm -rf /tmp/k6.tgz "/tmp/k6-${K6_VERSION}-linux-amd64" \
  && k6 version
 
-# Python SDK, CLI and pytest plugin from local sources. Pinning to local
-# makes the image self-contained — no pip → PyPI hop at CI start time, and
-# none of these is published yet, so there is nowhere else to get them.
-#
-# The plugin is here because the example's demo needs it: its device
-# fixture comes from this package, and without it the demo cannot run in
-# this image at all.
-COPY core/python /opt/edgelens/src/core/python
-COPY integrations/cli /opt/edgelens/src/integrations/cli
-COPY integrations/pytest /opt/edgelens/src/integrations/pytest
-
-# The example's third-party dependencies come from its own requirements
-# file rather than from a list spelled out here, so that adding one is a
-# tracked, reviewable change to a file that is actually read. It was not
-# read by anything before: it existed, and the two documented install
-# commands pointed at it, and nothing consumed it — which is worse than
-# its absence, because a file that looks like the right place is what
-# stops anyone looking for the mechanism.
-COPY examples/pytest/requirements.txt /opt/edgelens/example-requirements.txt
-
-# Rootless podman leaves HOME unset, which resolves to "/", and anything
-# writing a cache or config under it then fails on a path it cannot write.
-# Set here rather than passed at run time so every caller gets it without
-# having to know, and so it cannot be forgotten by one invocation.
-ENV HOME=/tmp
-
-# Order matters and is not stylistic. The local packages install first, so
-# that by the time the requirements file is read, its first-party line is
-# already satisfied by the source build and pip does not go looking for a
-# published release that does not exist yet.
-RUN pip install --upgrade pip \
- && pip install \
-      /opt/edgelens/src/core/python \
-      /opt/edgelens/src/integrations/cli \
-      /opt/edgelens/src/integrations/pytest \
- && pip install -r /opt/edgelens/example-requirements.txt \
+# Python SDK, CLI and pytest plugin from the dist/ wheels; their
+# third-party dependencies come from PyPI.
+RUN --mount=type=bind,source=dist,target=/dist \
+    pip install /dist/edgelens_sdk-*.whl /dist/edgelens_cli-*.whl /dist/edgelens_pytest-*.whl \
  && edgelens --version \
  && python -c "import edgelens; print('edgelens', edgelens.__version__)" \
  && python -c "import pytest_edgelens; print('edgelens-pytest ok')"
 
-# TypeScript SDK + Playwright plugin from the build stage's dists.
-# `npm pack` → `npm install -g <tarball>` resolves the file:../ dep
-# without needing a registry.
-COPY --from=ts-build /build/core/typescript /opt/edgelens/ts/core
-COPY --from=ts-build /build/integrations/playwright /opt/edgelens/ts/playwright
-RUN cd /opt/edgelens/ts/core && npm pack \
- && cd /opt/edgelens/ts/playwright && npm pack \
- && npm install -g --omit=optional \
-      /opt/edgelens/ts/core/edgelens-core-*.tgz \
-      /opt/edgelens/ts/playwright/edgelens-playwright-plugin-*.tgz \
- && rm /opt/edgelens/ts/core/edgelens-core-*.tgz \
-       /opt/edgelens/ts/playwright/edgelens-playwright-plugin-*.tgz \
- && cd / \
- && npm ls -g --depth=0 2>/dev/null | grep -E "@edgelens/(core|playwright-plugin)"
+# TypeScript SDK and Playwright plugin from the dist/ tarballs, installed
+# globally. @playwright/test is the plugin's peer dependency; it is pinned
+# to the base image's Playwright version so the browsers already in the
+# image match it. The npm cache and logs go in the same layer.
+ARG PLAYWRIGHT_VERSION=1.55.0
+RUN --mount=type=bind,source=dist,target=/dist \
+    npm install -g --omit=optional --no-audit --no-fund \
+      /dist/edgelens-core-*.tgz \
+      /dist/edgelens-playwright-plugin-*.tgz \
+      "@playwright/test@${PLAYWRIGHT_VERSION}" \
+ && npm ls -g --depth=0 2>/dev/null | grep -E "@edgelens/(core|playwright-plugin)|@playwright/test" \
+ && npm cache clean --force \
+ && rm -rf /root/.npm
 
 # Sensible defaults for CI workflows that mount the workspace.
 WORKDIR /workspace
 ENV CI=true
 
 LABEL org.opencontainers.image.title="edgelensai/edgelens-sdk" \
-      org.opencontainers.image.description="EdgeLens CI runner — Python SDK + CLI + Playwright plugin + k6" \
+      org.opencontainers.image.description="EdgeLens CI runner — Python SDK + CLI + pytest plugin + Playwright plugin + k6" \
       org.opencontainers.image.source="https://github.com/edgelens-ai/edgelens-sdk" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="EdgeLens"

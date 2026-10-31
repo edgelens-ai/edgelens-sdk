@@ -90,7 +90,7 @@ func (h *hostRecorder) assertNoProduction(t *testing.T) {
 func TestResumeReleaseUsesConfiguredKeyAndBaseURL(t *testing.T) {
 	srv, requests := recordServer(t)
 
-	c, err := (&Module{}).Connect(ConnectOptions{APIKey: "key-123", BaseURL: srv.URL})
+	c, err := (&Module{}).Connect(localServer("key-123", srv.URL))
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestResumeNeverContactsProductionURL(t *testing.T) {
 	rec := recordHosts(t)
 	srv, requests := recordServer(t)
 
-	c, err := (&Module{}).Connect(ConnectOptions{APIKey: "key-123", BaseURL: srv.URL})
+	c, err := (&Module{}).Connect(localServer("key-123", srv.URL))
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
@@ -190,6 +190,8 @@ func TestResumeFromJSTeardown(t *testing.T) {
 		const client = edgelens.connect({
 			apiKey: __ENV.EDGELENS_API_KEY,
 			baseUrl: __ENV.EDGELENS_BASE_URL,
+			allowInsecureBaseUrl: true,
+			allowPrivateBaseUrl: true,
 		});
 		function teardown(data) { client.resume(data.sessionId).release(); }
 		teardown({ sessionId: "sess_js" });

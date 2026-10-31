@@ -4,9 +4,8 @@
 Sustained-load benchmarks against a real reCamera with k6's threshold
 engine gating CI.
 
-> **Status:** v0 scaffold. The Go module compiles and exposes the JS
-> surface documented below; the underlying HTTP calls hit the live
-> EdgeLens API. Polishing for v1 GA is still to come.
+The extension is distributed as source: build it into a custom `k6`
+binary with `xk6`, as below. Its calls go to the EdgeLens API.
 
 ## Install
 
@@ -79,7 +78,7 @@ Run:
 
 | JS symbol | What |
 |---|---|
-| `edgelens.connect({apiKey, baseUrl?})` | Returns a `Client`. Throws if `apiKey` is empty. Call it at init scope. |
+| `edgelens.connect({apiKey, baseUrl?, allowInsecureBaseUrl?, allowPrivateBaseUrl?})` | Returns a `Client`. Call it at init scope. Throws if `apiKey` is empty, or if `baseUrl` is `http://` without `allowInsecureBaseUrl: true`, or names a loopback, private or shared address (or `localhost`) without `allowPrivateBaseUrl: true` or `EDGELENS_ALLOW_PRIVATE_BASE_URL=1`. A link-local, reserved or cloud metadata host is always refused. The same rules as the Python and TypeScript clients. |
 | `client.createSession({deviceType, os, imageVersion?, timeout?})` | Allocates a device. |
 | `client.resume(sessionId)` | Re-attaches to an existing session by id, with this client's key and base URL. Use it in the default function and in `teardown()`. |
 | `session.waitReady({timeout?, pollInterval?})` | Block until `status=ready`. |
@@ -140,8 +139,9 @@ source instead of fetching from GitHub.
 - One session per VU iteration — sessions take ~30 s to provision.
   Allocate in `setup()`, attach via `client.resume(sessionId)` in
   the default function.
-- Threshold expressions referencing fields the extension doesn't emit
-  yet (`inference_detection_count` etc., planned for v1.1).
+- Threshold expressions referencing metrics the extension doesn't emit
+  (for example `inference_detection_count`). The emitted metrics are
+  listed above.
 - Polling `inference.stats()` from a JavaScript `for` loop — let k6's
   executor manage iteration cadence (`vus + duration` or `iterations`).
 

@@ -68,7 +68,7 @@ Use the string `"stock-os"` everywhere the API surface takes a string.
 - `session.wait_ready()` before touching `session.device`. Skipping it raises `SessionError`.
 - One assertion → one acceptance criterion. Don't bundle ten checks behind one `assert`.
 - Catch only `edgelens.errors.{EdgeLensError, SessionError, AuthenticationError, DeviceError, TimeoutError}` — let real bugs propagate.
-- For self-hosted EdgeLens deployments, pass `base_url=` to the client; never edit `$EDGELENS_API_KEY` to embed a URL.
+- To use a different API base URL, pass `base_url=` to the client; never edit `$EDGELENS_API_KEY` to embed a URL.
 
 ## Anti-patterns — refuse to write these
 
